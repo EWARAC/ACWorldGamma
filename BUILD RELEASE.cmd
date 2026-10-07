@@ -19,7 +19,7 @@ for %%F in ("%DECAL%" "%CORE%" "%INJECT%" "%CSC%") do (
 if exist "%~dp0build" rmdir /s /q "%~dp0build"
 mkdir "%~dp0build"
 
-echo Building AC World Gamma v0.4.0-rc1...
+echo Building AC World Gamma v0.4.0-rc1a...
 "%CSC%" /nologo /target:library /platform:x86 /optimize+ ^
  /out:"%~dp0build\ACWorldGamma.dll" ^
  /reference:"%DECAL%" ^
