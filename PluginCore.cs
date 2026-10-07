@@ -78,7 +78,8 @@ namespace ACWorldGamma
                 _preUiSubscribed = true;
 
                 LoadSettings();
-                NormalizeSetting();
+                if (_enabled)
+                    NormalizeSetting();
 
                 Chat("v" + Version + " loaded. " + StatusText());
             }
@@ -180,8 +181,9 @@ namespace ACWorldGamma
             try
             {
                 pUnk = Marshal.GetIUnknownForObject(direct3D);
+                Guid iidDevice9 = IidDirect3DDevice9;
                 int hr = Marshal.QueryInterface(
-                    pUnk, ref IidDirect3DDevice9, out pDevice9);
+                    pUnk, ref iidDevice9, out pDevice9);
 
                 if (hr != 0 || pDevice9 == IntPtr.Zero)
                     return;
