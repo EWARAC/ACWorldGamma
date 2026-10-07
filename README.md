@@ -64,13 +64,28 @@ The release installer is written to:
 release\AC World Gamma Setup v0.3.0.exe
 ```
 
+## Third-party RenderHook provenance
+
+AC World Gamma itself did **not** originate `RenderHook.dll`.
+
+The rendering component used by AC World Gamma is the **RenderHook component from SkunkVision**, originally developed by **Greg Kusnick (`gkusnick`) / SkunkWorks**. `Interop.RenderHookLib.dll` is the managed COM interop assembly for that RenderHook type library.
+
+Original project:
+
+- SkunkWorks on SourceForge: https://sourceforge.net/projects/skunkworks/
+- SkunkVision RenderHook source tree: https://sourceforge.net/p/skunkworks/code/HEAD/tree/SkunkVision/trunk/RenderHook/
+
+SourceForge identifies the SkunkWorks project as maintained by `gkusnick` and currently lists the project license as the **MIT License**.
+
+AC World Gamma uses this third-party rendering component; the AC World Gamma control/plugin code around it is separate work in this repository.
+
+See `THIRD_PARTY_NOTES.txt` for the full attribution and MIT permission notice.
+
 ## Technical note
 
-AC World Gamma loads its private rendering component directly and does not require SkunkVision to be installed, enabled, or registered at runtime.
+AC World Gamma loads its private copy of the rendering component directly and does not require SkunkVision to be installed, enabled, or registered at runtime.
 
 The brightness control uses the old SkunkVision world-light rendering technique rather than changing the Windows desktop gamma. This is why the AC interface remains unchanged.
-
-See `THIRD_PARTY_NOTES.txt` for attribution and licensing information.
 
 ## Tested
 
