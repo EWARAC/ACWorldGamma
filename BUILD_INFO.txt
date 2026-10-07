@@ -1,26 +1,32 @@
-AC World Gamma Native Test v0.4.0-alpha1
+AC World Gamma v0.4.0-rc1
 
-Plugin GUID: {A9D7C4AA-2A2E-4D2D-9F83-7B728C37E8D4}
-Assembly GUID: {4B1E82B4-5F5C-4EC2-9A83-0FE870A137E8}
-Build target: .NET Framework 4.x / x86
-Install path: C:\Games\Decal Plugins\AC World Gamma Native Test
+Plugin GUID:
+  {A9D7C4AA-2A2E-4D2D-9F83-7B728C37E8D4}
 
-Runtime components bundled by the installer:
-  ACWorldGamma.dll
+Assembly GUID:
+  {4B1E82B4-5F5C-4EC2-9A83-0FE870A137E8}
 
-Runtime activation:
-  - Uses Decal.Adapter only.
-  - Reads the live Direct3D9 device exposed by Host.Render.UnsafeDevice.
-  - Installs an in-process replacement for IDirect3DDevice9::SetLight.
-  - Restores the original SetLight pointer when the plugin shuts down.
-  - Does not use RenderHook.dll.
-  - Does not use Interop.RenderHookLib.dll.
-  - Does not require SkunkVision to be installed.
+Target:
+  .NET Framework 4.x
+  x86
 
-Implementation:
-  Direct3DLightHook.cs
+Build output:
+  build\ACWorldGamma.dll
 
-The implementation was written independently for AC World Gamma around the
-documented IDirect3DDevice9 interface layout and Windows memory-protection APIs.
+Required installed Decal assemblies:
+  Decal.Adapter.dll
+  Decal.Interop.Core.DLL
+  Decal.Interop.Inject.DLL
 
-See NATIVE_HOOK_NOTES.md for provenance and test notes.
+Rendering path:
+  Decal IInjectService / IRender3DSink
+  live IDirect3DDevice9
+  RenderPreUI world-only brightness pass
+  reusable Direct3D state block for state preservation
+
+Not used:
+  RenderHook.dll
+  Interop.RenderHookLib.dll
+  VirtualProtect
+  Direct3D vtable replacement
+  Windows desktop gamma
