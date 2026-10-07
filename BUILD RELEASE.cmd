@@ -19,7 +19,7 @@ for %%F in ("%DECAL%" "%CORE%" "%INJECT%" "%CSC%") do (
 if exist "%~dp0build" rmdir /s /q "%~dp0build"
 mkdir "%~dp0build"
 
-echo Building AC World Gamma render-sink diagnostic...
+echo Building AC World Gamma v0.4.0-alpha6...
 "%CSC%" /nologo /target:library /platform:x86 /optimize+ ^
  /out:"%~dp0build\ACWorldGamma.dll" ^
  /reference:"%DECAL%" ^
@@ -33,7 +33,7 @@ echo.
 echo BUILD OK:
 echo %~dp0build\ACWorldGamma.dll
 echo.
-echo Diagnostic only: this build does NOT alter Direct3D state or world lighting.
+echo Native pre-UI brightness build: no RenderHook.dll and no vtable patching.
 pause
 exit /b 0
 
