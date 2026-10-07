@@ -73,7 +73,9 @@ namespace ACWorldGamma
             {
                 _registrationError = "";
 
-                object serviceObject = Host.GetObject(@"services\DecalPlugins.InjectService");
+                object serviceObject = Host.Decal.GetObject(
+                    @"services\DecalPlugins.InjectService",
+                    new Guid("47761792-2520-4802-8548-5CA580697614"));
                 if (serviceObject == null)
                     throw new InvalidOperationException("Decal InjectService returned null.");
 
