@@ -1,12 +1,12 @@
-AC WORLD GAMMA
-Version 0.3.0
+AC WORLD GAMMA NATIVE TEST
+Version 0.4.0-alpha1
 Publisher: EWARAC
 
 PURPOSE
 -------
-AC World Gamma adds command-controlled brightness to the Asheron's Call 3D world
-without changing the brightness of the game interface, chat, radar, inventory,
-spell bars, plugin windows, or the Windows desktop.
+Experimental build of AC World Gamma using an independently written Direct3D9
+light hook. This branch does not require RenderHook.dll or
+Interop.RenderHookLib.dll.
 
 COMMANDS
 --------
@@ -34,11 +34,19 @@ INSTALLATION
 ------------
 Close Asheron's Call and run:
 
-  AC World Gamma Setup v0.3.0.exe
+  AC World Gamma Native Test v0.4.0-alpha1.exe
 
-Default install location:
+Default test install location:
 
-  C:\Games\Decal Plugins\AC World Gamma
+  C:\Games\Decal Plugins\AC World Gamma Native Test
+
+IMPORTANT
+---------
+This installer uses the same Decal plugin GUID as the stable AC World Gamma
+release so Decal loads the test build instead of loading both hooks at once.
+
+The stable v0.3.0 files are not overwritten because the test build installs
+into a separate folder.
 
 FIRST TEST
 ----------
@@ -49,20 +57,18 @@ Start AC normally and type:
 Then try:
 
   /acgamma 1
+  /acgamma 5
   /acgamma off
 
 Only the 3D world should change brightness.
 
-UNINSTALL
----------
-Use Windows Installed Apps / Programs and Features and remove:
-
-  AC World Gamma
-
 TECHNICAL NOTE
 --------------
-AC World Gamma includes the native rendering component required to alter
-AC's world lighting. It does not require another plugin to be installed or
-enabled at runtime.
+The test build obtains Decal's exposed Direct3D9 device through
+Host.Render.UnsafeDevice and independently intercepts the documented
+IDirect3DDevice9::SetLight entry.
 
-See THIRD_PARTY_NOTES.txt for attribution and licensing information.
+No SkunkVision RenderHook code, COM interface, DLL, or generated interop assembly
+is required by this build.
+
+See NATIVE_HOOK_NOTES.md for implementation provenance and design notes.
