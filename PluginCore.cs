@@ -28,6 +28,7 @@ namespace ACWorldGamma
         private readonly object _deviceLock = new object();
         private string _deviceRuntimeType = "(none)";
         private string _deviceIUnknown = "(none)";
+        private string _device9Query = "(not queried)";
 
         protected override void Startup()
         {
@@ -134,14 +135,28 @@ namespace ACWorldGamma
                     _deviceRuntimeType = direct3D.GetType().FullName ?? direct3D.GetType().Name;
 
                     IntPtr pUnk = IntPtr.Zero;
+                    IntPtr pDevice9 = IntPtr.Zero;
                     try
                     {
                         pUnk = Marshal.GetIUnknownForObject(direct3D);
                         if (pUnk != IntPtr.Zero)
+                        {
                             _deviceIUnknown = "0x" + pUnk.ToInt64().ToString("X");
+
+                            Guid iidDevice9 = new Guid("D0223B96-BF7A-43FD-92BD-A43B0D82B9EB");
+                            int hr = Marshal.QueryInterface(pUnk, ref iidDevice9, out pDevice9);
+
+                            if (hr == 0 && pDevice9 != IntPtr.Zero)
+                                _device9Query = "SUCCESS, ptr=0x" + pDevice9.ToInt64().ToString("X");
+                            else
+                                _device9Query = "FAILED, HRESULT=0x" + hr.ToString("X8");
+                        }
                     }
                     finally
                     {
+                        if (pDevice9 != IntPtr.Zero)
+                            Marshal.Release(pDevice9);
+
                         if (pUnk != IntPtr.Zero)
                             Marshal.Release(pUnk);
                     }
@@ -204,6 +219,7 @@ namespace ACWorldGamma
             {
                 Chat("D3D callback object = " + _deviceRuntimeType +
                      "; IUnknown = " + _deviceIUnknown);
+                Chat("IDirect3DDevice9 QueryInterface = " + _device9Query);
             }
         }
 
