@@ -13,5 +13,13 @@
       <HintPath>C:\Program Files (x86)\Decal 3.0\Decal.Adapter.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="Decal.Interop.Core">
+      <HintPath>C:\Program Files (x86)\Decal 3.0\.NET 4.0 PIA\Decal.Interop.Core.DLL</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Decal.Interop.Inject">
+      <HintPath>C:\Program Files (x86)\Decal 3.0\.NET 4.0 PIA\Decal.Interop.Inject.DLL</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 </Project>
