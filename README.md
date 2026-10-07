@@ -5,7 +5,7 @@ The AC user interface, chat, panels and Windows desktop gamma are left unchanged
 
 ## Version
 
-Current test candidate: **v0.4.0-rc1**
+Current release: **v0.4.0**
 
 ## Commands
 
@@ -73,7 +73,7 @@ Output:
 build\ACWorldGamma.dll
 ```
 
-## v0.4.0-rc1 live test status
+## v0.4.0 validation
 
 Verified in Asheron's Call:
 
@@ -89,4 +89,4 @@ Verified in Asheron's Call:
 - fullscreen/windowed mode transition
 - rendering continues correctly after the display-mode transition
 
-The stable `main` branch remains untouched while this release candidate is tested.
+This branch contains the tested v0.4.0 release implementation.
