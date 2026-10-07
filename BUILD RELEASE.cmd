@@ -17,9 +17,11 @@ for %%F in ("%DECAL%" "%CORE%" "%INJECT%" "%CSC%") do (
 )
 
 if exist "%~dp0build" rmdir /s /q "%~dp0build"
+if exist "%~dp0release" rmdir /s /q "%~dp0release"
 mkdir "%~dp0build"
+mkdir "%~dp0release"
 
-echo Building AC World Gamma v0.4.0-rc1a...
+echo Building AC World Gamma v0.4.0-rc1a plugin...
 "%CSC%" /nologo /target:library /platform:x86 /optimize+ ^
  /out:"%~dp0build\ACWorldGamma.dll" ^
  /reference:"%DECAL%" ^
@@ -29,11 +31,31 @@ echo Building AC World Gamma v0.4.0-rc1a...
  "%~dp0PluginCore.cs" "%~dp0Properties\AssemblyInfo.cs"
 if errorlevel 1 goto :fail
 
+echo Building uninstaller...
+"%CSC%" /nologo /target:winexe /platform:x86 /optimize+ ^
+ /out:"%~dp0build\uninstall.exe" ^
+ /reference:System.dll ^
+ /reference:System.Windows.Forms.dll ^
+ "%~dp0Uninstaller.cs"
+if errorlevel 1 goto :fail
+
+echo Building self-contained installer...
+"%CSC%" /nologo /target:winexe /platform:x86 /optimize+ ^
+ /out:"%~dp0release\AC World Gamma Setup v0.4.0-rc1a.exe" ^
+ /reference:System.dll ^
+ /reference:System.Windows.Forms.dll ^
+ /resource:"%~dp0build\ACWorldGamma.dll",ACWorldGamma.dll ^
+ /resource:"%~dp0build\uninstall.exe",uninstall.exe ^
+ /resource:"%~dp0README.txt",README.txt ^
+ "%~dp0Installer.cs"
+if errorlevel 1 goto :fail
+
 echo.
 echo BUILD OK:
-echo %~dp0build\ACWorldGamma.dll
+echo %~dp0release\AC World Gamma Setup v0.4.0-rc1a.exe
 echo.
-echo World-only pre-UI renderer. No RenderHook.dll. No vtable patching.
+echo Self-contained installer created.
+echo No RenderHook.dll. No Interop.RenderHookLib.dll. No vtable patching.
 pause
 exit /b 0
 
