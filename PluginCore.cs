@@ -14,7 +14,7 @@ namespace ACWorldGamma
     [ComDefaultInterface(typeof(IRender3DSink))]
     public sealed class PluginCore : PluginBase, IRender3DSink
     {
-        private const string Version = "0.4.0-alpha3";
+        private const string Version = "0.4.0-alpha4";
 
         private IInjectService _injectService;
         private bool _registered;
@@ -33,6 +33,10 @@ namespace ACWorldGamma
         private string _postBeginLighting = "(not read)";
         private string _preEndAmbient = "(not read)";
         private string _preEndLighting = "(not read)";
+        private string _postBeginLight0 = "(not sampled)";
+        private string _preEndLight0 = "(not sampled)";
+        private volatile bool _sampleLightRequested = true;
+        private volatile bool _postBeginLightCaptured;
         private long _renderPreUICount;
 
         protected override void Startup()
@@ -116,6 +120,11 @@ namespace ACWorldGamma
             Interlocked.Increment(ref _postBeginCount);
             ObserveDevice(direct3D);
             ReadRenderStatesOnce(direct3D, true);
+            if (_sampleLightRequested && !_postBeginLightCaptured)
+            {
+                _postBeginLight0 = ReadLight0(direct3D);
+                _postBeginLightCaptured = true;
+            }
         }
 
         public void PreEndScene(object direct3D)
@@ -123,6 +132,12 @@ namespace ACWorldGamma
             Interlocked.Increment(ref _preEndCount);
             ObserveDevice(direct3D);
             ReadRenderStatesOnce(direct3D, false);
+            if (_sampleLightRequested && _postBeginLightCaptured)
+            {
+                _preEndLight0 = ReadLight0(direct3D);
+                _sampleLightRequested = false;
+                _postBeginLightCaptured = false;
+            }
         }
 
         public void PostEndScene(object direct3D)
@@ -285,6 +300,123 @@ namespace ACWorldGamma
             }
         }
 
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct D3DColorValue
+        {
+            public float R;
+            public float G;
+            public float B;
+            public float A;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct D3DVector
+        {
+            public float X;
+            public float Y;
+            public float Z;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct D3DLight9
+        {
+            public int Type;
+            public D3DColorValue Diffuse;
+            public D3DColorValue Specular;
+            public D3DColorValue Ambient;
+            public D3DVector Position;
+            public D3DVector Direction;
+            public float Range;
+            public float Falloff;
+            public float Attenuation0;
+            public float Attenuation1;
+            public float Attenuation2;
+            public float Theta;
+            public float Phi;
+        }
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int GetLightDelegate(IntPtr device, uint index, out D3DLight9 light);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int GetLightEnableDelegate(IntPtr device, uint index, out int enabled);
+
+        private string ReadLight0(object direct3D)
+        {
+            if (direct3D == null)
+                return "callback object is null";
+
+            IntPtr pUnk = IntPtr.Zero;
+            IntPtr pDevice9 = IntPtr.Zero;
+
+            try
+            {
+                pUnk = Marshal.GetIUnknownForObject(direct3D);
+                Guid iidDevice9 = new Guid("D0223B96-BF7A-43FD-92BD-A43B0D82B9EB");
+                int hr = Marshal.QueryInterface(pUnk, ref iidDevice9, out pDevice9);
+                if (hr != 0 || pDevice9 == IntPtr.Zero)
+                    return "QI failed 0x" + hr.ToString("X8");
+
+                IntPtr vtable = Marshal.ReadIntPtr(pDevice9);
+                IntPtr fnGetLight = Marshal.ReadIntPtr(vtable, 52 * IntPtr.Size);
+                IntPtr fnGetLightEnable = Marshal.ReadIntPtr(vtable, 54 * IntPtr.Size);
+
+                GetLightDelegate getLight =
+                    (GetLightDelegate)Marshal.GetDelegateForFunctionPointer(
+                        fnGetLight, typeof(GetLightDelegate));
+                GetLightEnableDelegate getLightEnable =
+                    (GetLightEnableDelegate)Marshal.GetDelegateForFunctionPointer(
+                        fnGetLightEnable, typeof(GetLightEnableDelegate));
+
+                D3DLight9 light;
+                int enabled;
+                int hrLight = getLight(pDevice9, 0, out light);
+                int hrEnabled = getLightEnable(pDevice9, 0, out enabled);
+
+                if (hrLight != 0)
+                    return "GetLight(0) HRESULT=0x" + hrLight.ToString("X8") +
+                           "; GetLightEnable HRESULT=0x" + hrEnabled.ToString("X8");
+
+                string enabledText = hrEnabled == 0
+                    ? (enabled != 0 ? "ON" : "OFF")
+                    : "HRESULT 0x" + hrEnabled.ToString("X8");
+
+                return "Type=" + light.Type +
+                       ", Enabled=" + enabledText +
+                       ", Ambient=(" + light.Ambient.R.ToString("0.###") +
+                       "," + light.Ambient.G.ToString("0.###") +
+                       "," + light.Ambient.B.ToString("0.###") +
+                       "," + light.Ambient.A.ToString("0.###") + ")" +
+                       ", Range=" + light.Range.ToString("0.###") +
+                       ", Diffuse=(" + light.Diffuse.R.ToString("0.###") +
+                       "," + light.Diffuse.G.ToString("0.###") +
+                       "," + light.Diffuse.B.ToString("0.###") + ")";
+            }
+            catch (Exception ex)
+            {
+                return ex.GetType().Name + ": " + ex.Message;
+            }
+            finally
+            {
+                if (pDevice9 != IntPtr.Zero)
+                    Marshal.Release(pDevice9);
+                if (pUnk != IntPtr.Zero)
+                    Marshal.Release(pUnk);
+            }
+        }
+
+        private void RequestLightSample()
+        {
+            lock (_deviceLock)
+            {
+                _postBeginLight0 = "(pending)";
+                _preEndLight0 = "(pending)";
+                _postBeginLightCaptured = false;
+                _sampleLightRequested = true;
+            }
+        }
+
         private void Current_CommandLineText(object sender, ChatParserInterceptEventArgs e)
         {
             try
@@ -303,7 +435,7 @@ namespace ACWorldGamma
                 if (rest.Length == 0 ||
                     String.Equals(rest, "help", StringComparison.OrdinalIgnoreCase))
                 {
-                    Chat("Diagnostic commands: /acgamma probe | status");
+                    Chat("Diagnostic commands: /acgamma probe | status | sample");
                     return;
                 }
 
@@ -314,7 +446,14 @@ namespace ACWorldGamma
                     return;
                 }
 
-                Chat("This diagnostic build does not alter lighting. Use /acgamma probe.");
+                if (String.Equals(rest, "sample", StringComparison.OrdinalIgnoreCase))
+                {
+                    RequestLightSample();
+                    Chat("Light 0 sample requested for the next rendered frame.");
+                    return;
+                }
+
+                Chat("This diagnostic build does not alter lighting. Use /acgamma probe or /acgamma sample.");
             }
             catch (Exception ex)
             {
@@ -342,6 +481,8 @@ namespace ACWorldGamma
                      ", LIGHTING=" + _postBeginLighting);
                 Chat("PreEndScene: AMBIENT=" + _preEndAmbient +
                      ", LIGHTING=" + _preEndLighting);
+                Chat("PostBeginScene Light 0: " + _postBeginLight0);
+                Chat("PreEndScene Light 0: " + _preEndLight0);
             }
         }
 
