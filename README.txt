@@ -1,5 +1,5 @@
 AC WORLD GAMMA
-Version 0.4.0-rc1
+Version 0.4.0
 Publisher: EWARAC
 
 PURPOSE
