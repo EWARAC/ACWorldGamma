@@ -15,7 +15,7 @@ namespace ACWorldGamma
     [ComDefaultInterface(typeof(IRender3DSink))]
     public sealed class PluginCore : PluginBase, IRender3DSink
     {
-        private const string Version = "0.4.0-rc1";
+        private const string Version = "0.4.0-rc1a";
         private static readonly Guid IidInjectService =
             new Guid("47761792-2520-4802-8548-5CA580697614");
         private static readonly Guid IidDirect3DDevice9 =
@@ -29,9 +29,7 @@ namespace ACWorldGamma
         private string _renderError = "";
 
         private readonly object _renderLock = new object();
-        private object _deviceObject;
         private IntPtr _device9 = IntPtr.Zero;
-        private IntPtr _stateBlock = IntPtr.Zero;
         private IntPtr _quadMemory = IntPtr.Zero;
 
         private GetViewportDelegate _getViewport;
@@ -41,8 +39,6 @@ namespace ACWorldGamma
         private SetTextureStageStateDelegate _setTextureStageState;
         private DrawPrimitiveUPDelegate _drawPrimitiveUP;
         private SetFVFDelegate _setFVF;
-        private StateBlockCaptureDelegate _captureStateBlock;
-        private StateBlockApplyDelegate _applyStateBlock;
 
         private string SettingsDirectory
         {
@@ -166,15 +162,6 @@ namespace ACWorldGamma
             if (direct3D == null)
                 return;
 
-            lock (_renderLock)
-            {
-                if (_device9 != IntPtr.Zero &&
-                    Object.ReferenceEquals(_deviceObject, direct3D))
-                {
-                    return;
-                }
-            }
-
             IntPtr pUnk = IntPtr.Zero;
             IntPtr pDevice9 = IntPtr.Zero;
 
@@ -192,7 +179,6 @@ namespace ACWorldGamma
                 {
                     if (_device9 == pDevice9)
                     {
-                        _deviceObject = direct3D;
                         return;
                     }
 
@@ -200,8 +186,6 @@ namespace ACWorldGamma
 
                     _device9 = pDevice9;
                     pDevice9 = IntPtr.Zero;
-                    _deviceObject = direct3D;
-
                     CacheDeviceMethodsLocked();
                     _renderError = "";
                 }
@@ -245,15 +229,12 @@ namespace ACWorldGamma
 
         private void ReleaseDeviceLocked()
         {
-            ReleaseStateBlockLocked();
-
             if (_device9 != IntPtr.Zero)
             {
                 Marshal.Release(_device9);
                 _device9 = IntPtr.Zero;
             }
 
-            _deviceObject = null;
             _getViewport = null;
             _createStateBlock = null;
             _setRenderState = null;
@@ -261,53 +242,6 @@ namespace ACWorldGamma
             _setTextureStageState = null;
             _drawPrimitiveUP = null;
             _setFVF = null;
-        }
-
-        private void ReleaseStateBlockLocked()
-        {
-            if (_stateBlock != IntPtr.Zero)
-            {
-                Marshal.Release(_stateBlock);
-                _stateBlock = IntPtr.Zero;
-            }
-
-            _captureStateBlock = null;
-            _applyStateBlock = null;
-        }
-
-        private bool CaptureCurrentStateLocked()
-        {
-            if (_stateBlock != IntPtr.Zero && _captureStateBlock != null)
-            {
-                int captureHr = _captureStateBlock(_stateBlock);
-                if (captureHr == 0)
-                    return true;
-
-                ReleaseStateBlockLocked();
-            }
-
-            if (_createStateBlock == null)
-                return false;
-
-            int hr = _createStateBlock(_device9, 1, out _stateBlock); // D3DSBT_ALL
-            if (hr != 0 || _stateBlock == IntPtr.Zero)
-            {
-                _stateBlock = IntPtr.Zero;
-                return false;
-            }
-
-            try
-            {
-                IntPtr vtable = Marshal.ReadIntPtr(_stateBlock);
-                _captureStateBlock = GetDelegate<StateBlockCaptureDelegate>(vtable, 4);
-                _applyStateBlock = GetDelegate<StateBlockApplyDelegate>(vtable, 5);
-                return _applyStateBlock != null;
-            }
-            catch
-            {
-                ReleaseStateBlockLocked();
-                return false;
-            }
         }
 
         private void Hooks_RenderPreUI()
@@ -329,12 +263,13 @@ namespace ACWorldGamma
                     _setTexture == null ||
                     _setTextureStageState == null ||
                     _drawPrimitiveUP == null ||
-                    _setFVF == null)
+                    _setFVF == null ||
+                    _createStateBlock == null)
                 {
                     return;
                 }
 
-                bool restoreState = false;
+                IntPtr stateBlock = IntPtr.Zero;
 
                 try
                 {
@@ -343,10 +278,9 @@ namespace ACWorldGamma
                     if (hr != 0 || viewport.Width == 0 || viewport.Height == 0)
                         return;
 
-                    if (!CaptureCurrentStateLocked())
+                    hr = _createStateBlock(_device9, 1, out stateBlock); // D3DSBT_ALL
+                    if (hr != 0 || stateBlock == IntPtr.Zero)
                         return;
-
-                    restoreState = true;
 
                     _setTexture(_device9, 0, IntPtr.Zero);
 
@@ -405,11 +339,20 @@ namespace ACWorldGamma
                 }
                 finally
                 {
-                    if (restoreState &&
-                        _stateBlock != IntPtr.Zero &&
-                        _applyStateBlock != null)
+                    if (stateBlock != IntPtr.Zero)
                     {
-                        try { _applyStateBlock(_stateBlock); } catch { }
+                        try
+                        {
+                            IntPtr sbVtable = Marshal.ReadIntPtr(stateBlock);
+                            StateBlockApplyDelegate apply =
+                                GetDelegate<StateBlockApplyDelegate>(sbVtable, 5);
+
+                            if (apply != null)
+                                apply(stateBlock);
+                        }
+                        catch { }
+
+                        try { Marshal.Release(stateBlock); } catch { }
                     }
                 }
             }
@@ -671,10 +614,6 @@ namespace ACWorldGamma
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int SetFVFDelegate(
             IntPtr device, uint fvf);
-
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        private delegate int StateBlockCaptureDelegate(
-            IntPtr stateBlock);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int StateBlockApplyDelegate(
