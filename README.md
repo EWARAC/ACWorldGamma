@@ -1,12 +1,38 @@
-# AC World Gamma
+# AC World Gamma — native light hook prototype
 
-A lightweight Decal plugin for **Asheron's Call** that adjusts the brightness of the **3D world** without changing the game UI, chat, radar, inventory, spell bars, plugin windows, or the Windows desktop.
+This branch contains an **experimental independent replacement** for the
+SkunkVision RenderHook dependency used by AC World Gamma v0.3.0.
 
-## v0.3.0
+The stable `main` branch remains unchanged apart from the previously added
+third-party attribution.
 
-AC World Gamma v0.3.0 is the first release-ready standalone build.
+## What changes in this branch
 
-It has been tested successfully in both **windowed** and **fullscreen** Asheron's Call. The selected level is saved and restored when AC starts again.
+The prototype:
+
+- does **not** reference `Interop.RenderHookLib.dll`
+- does **not** load or ship `RenderHook.dll`
+- does **not** use the SkunkVision RenderHook COM interface
+- obtains Decal's exposed Direct3D device from `Host.Render.UnsafeDevice`
+- independently hooks the documented `IDirect3DDevice9::SetLight` method
+- restores the original SetLight function pointer when the plugin shuts down
+
+The new implementation lives in:
+
+```text
+Direct3DLightHook.cs
+```
+
+## Version
+
+Experimental build:
+
+```text
+0.4.0-alpha1
+```
+
+This build is intentionally separate from the release-ready v0.3.0 build until
+the new rendering path has been tested in live Asheron's Call sessions.
 
 ## Commands
 
@@ -24,25 +50,7 @@ It has been tested successfully in both **windowed** and **fullscreen** Asheron'
 /acgamma help
 ```
 
-- `0` = normal Asheron's Call world lighting
-- `1` = smallest extra brightness level
-- `25` = maximum
-
-## Installation
-
-1. Close Asheron's Call.
-2. Download **AC World Gamma Setup v0.3.0.exe** from the Releases page.
-3. Run the installer.
-4. Start AC normally.
-5. Type `/acgamma status`.
-
-Default install location:
-
-```text
-C:\Games\Decal Plugins\AC World Gamma
-```
-
-## Building from source
+## Building
 
 Requirements:
 
@@ -50,7 +58,8 @@ Requirements:
 - Decal 3.0
 - .NET Framework 4.x compiler
 - 32-bit/x86 target
-- `RenderHook.dll` and `Interop.RenderHookLib.dll` in the project's `ThirdParty` folder
+
+No SkunkVision or RenderHook binaries are required to build this branch.
 
 Run:
 
@@ -58,44 +67,50 @@ Run:
 BUILD RELEASE.cmd
 ```
 
-The release installer is written to:
+The experimental installer is written to:
 
 ```text
-release\AC World Gamma Setup v0.3.0.exe
+release\AC World Gamma Native Test v0.4.0-alpha1.exe
 ```
 
-## Third-party RenderHook provenance
+## Installation safety
 
-AC World Gamma itself did **not** originate `RenderHook.dll`.
+The test installer uses the same Decal plugin GUID as the stable plugin so
+Decal will not load both lighting hooks at the same time.
 
-The rendering component used by AC World Gamma is the **RenderHook component from SkunkVision**, originally developed by **Greg Kusnick (`gkusnick`) / SkunkWorks**. `Interop.RenderHookLib.dll` is the managed COM interop assembly for that RenderHook type library.
+The test build installs to a separate folder:
 
-Original project:
+```text
+C:\Games\Decal Plugins\AC World Gamma Native Test
+```
 
-- SkunkWorks on SourceForge: https://sourceforge.net/projects/skunkworks/
-- SkunkVision RenderHook source tree: https://sourceforge.net/p/skunkworks/code/HEAD/tree/SkunkVision/trunk/RenderHook/
+The stable v0.3.0 files are therefore not overwritten. Reinstalling the stable
+v0.3.0 installer restores the stable registration.
 
-SourceForge identifies the SkunkWorks project as maintained by `gkusnick` and currently lists the project license as the **MIT License**.
+## Provenance
 
-AC World Gamma uses this third-party rendering component; the AC World Gamma control/plugin code around it is separate work in this repository.
+The code in `Direct3DLightHook.cs` was written specifically for AC World Gamma
+around the documented Direct3D9 COM interface and Windows memory protection
+APIs.
 
-See `THIRD_PARTY_NOTES.txt` for the full attribution and MIT permission notice.
+It does not contain or require the SkunkVision RenderHook implementation.
 
-## Technical note
+The stable v0.3.0 branch continues to retain explicit attribution for the
+third-party SkunkVision RenderHook component it uses.
 
-AC World Gamma loads its private copy of the rendering component directly and does not require SkunkVision to be installed, enabled, or registered at runtime.
+See `NATIVE_HOOK_NOTES.md` for more detail.
 
-The brightness control uses the old SkunkVision world-light rendering technique rather than changing the Windows desktop gamma. This is why the AC interface remains unchanged.
+## Test status
 
-## Tested
+Not yet release-ready.
 
-v0.3.0 has been verified to:
+The first live tests should verify:
 
-- install and load through Decal
-- preserve the selected brightness level between sessions
-- switch cleanly between normal and adjusted world lighting
-- alter the 3D world without altering the 2D UI
-- work in windowed mode
-- work in fullscreen mode
-- run without SkunkVision installed
-- rebuild successfully without SkunkVision installed
+- plugin loads without RenderHook.dll present
+- `/acgamma off` leaves normal world lighting unchanged
+- brightness levels visibly affect only the 3D world
+- repeated on/off and level changes are stable
+- windowed mode
+- fullscreen mode
+- logout/login
+- multiple AC clients in separate processes
