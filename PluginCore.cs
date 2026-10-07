@@ -1,62 +1,20 @@
 using System;
 using System.Globalization;
 using System.IO;
-using System.Reflection;
-using System.Runtime.InteropServices;
 using Decal.Adapter;
 
 namespace ACWorldGamma
 {
-    [FriendlyName("AC World Gamma")]
+    [FriendlyName("AC World Gamma Native Test")]
     [Guid("A9D7C4AA-2A2E-4D2D-9F83-7B728C37E8D4")]
     public sealed class PluginCore : PluginBase
     {
-        private const string Version = "0.3.0";
+        private const string Version = "0.4.0-alpha1";
 
-        private RenderHookLib.ISVRenderHook _hook;
-        private IntPtr _renderHookModule = IntPtr.Zero;
+        private Direct3DLightHook _hook;
         private bool _hookReady = false;
         private bool _enabled = false;
         private int _level = 1;
-
-        private static readonly Guid ClsidSVRenderHook =
-            new Guid("084DB7D3-FCA8-4C37-8748-18232FE9CF9A");
-
-        private static readonly Guid IidIClassFactory =
-            new Guid("00000001-0000-0000-C000-000000000046");
-
-        private static readonly Guid IidSVRenderHook =
-            new Guid("F5E367AA-6FC9-473B-8BC8-9060C25EFA39");
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        private static extern IntPtr LoadLibraryW(string lpFileName);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool FreeLibrary(IntPtr hModule);
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Ansi, SetLastError = true)]
-        private static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
-
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        private delegate int DllGetClassObjectDelegate(
-            ref Guid rclsid,
-            ref Guid riid,
-            out IntPtr ppv);
-
-        [ComImport]
-        [Guid("00000001-0000-0000-C000-000000000046")]
-        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-        private interface IClassFactory
-        {
-            [PreserveSig]
-            int CreateInstance(
-                IntPtr pUnkOuter,
-                ref Guid riid,
-                out IntPtr ppvObject);
-
-            [PreserveSig]
-            int LockServer([MarshalAs(UnmanagedType.Bool)] bool fLock);
-        }
 
         private string SettingsDirectory
         {
@@ -73,16 +31,6 @@ namespace ACWorldGamma
             get { return System.IO.Path.Combine(SettingsDirectory, "Settings.txt"); }
         }
 
-        private string PrivateRenderHookPath
-        {
-            get
-            {
-                string pluginDir = System.IO.Path.GetDirectoryName(
-                    Assembly.GetExecutingAssembly().Location);
-                return System.IO.Path.Combine(pluginDir, "RenderHook.dll");
-            }
-        }
-
         protected override void Startup()
         {
             try
@@ -90,12 +38,12 @@ namespace ACWorldGamma
                 CoreManager.Current.CommandLineText += Current_CommandLineText;
 
                 LoadSettings();
-                InitializePrivateRenderHook();
+                InitializeNativeLightHook();
 
                 if (_hookReady)
                 {
                     ApplyCurrentSetting();
-                    Chat("v" + Version + " loaded. " + StatusText());
+                    Chat("v" + Version + " loaded using the independent native light hook. " + StatusText());
                 }
             }
             catch (Exception ex)
@@ -113,137 +61,44 @@ namespace ACWorldGamma
             }
             catch { }
 
-            ReleaseRenderHook();
+            ReleaseNativeLightHook();
         }
 
-        private void InitializePrivateRenderHook()
+        private void InitializeNativeLightHook()
         {
-            IntPtr factoryPtr = IntPtr.Zero;
-            IntPtr hookPtr = IntPtr.Zero;
-            IClassFactory factory = null;
-
             try
             {
-                if (!File.Exists(PrivateRenderHookPath))
+                object device = Host.Render.UnsafeDevice;
+                if (device == null)
                 {
-                    Chat("Private RenderHook.dll is missing.");
+                    Chat("Decal did not expose a Direct3D device.");
                     return;
                 }
 
-                _renderHookModule = LoadLibraryW(PrivateRenderHookPath);
-                if (_renderHookModule == IntPtr.Zero)
-                {
-                    throw new System.ComponentModel.Win32Exception(
-                        Marshal.GetLastWin32Error(),
-                        "LoadLibrary failed for " + PrivateRenderHookPath);
-                }
-
-                IntPtr proc = GetProcAddress(_renderHookModule, "DllGetClassObject");
-                if (proc == IntPtr.Zero)
-                {
-                    throw new InvalidOperationException(
-                        "RenderHook.dll does not export DllGetClassObject.");
-                }
-
-                DllGetClassObjectDelegate getClassObject =
-                    (DllGetClassObjectDelegate)Marshal.GetDelegateForFunctionPointer(
-                        proc, typeof(DllGetClassObjectDelegate));
-
-                Guid clsid = ClsidSVRenderHook;
-                Guid iidFactory = IidIClassFactory;
-
-                int hr = getClassObject(
-                    ref clsid, ref iidFactory, out factoryPtr);
-                Marshal.ThrowExceptionForHR(hr);
-
-                factory = (IClassFactory)Marshal.GetObjectForIUnknown(factoryPtr);
-
-                Guid iidHook = IidSVRenderHook;
-                hr = factory.CreateInstance(
-                    IntPtr.Zero, ref iidHook, out hookPtr);
-                Marshal.ThrowExceptionForHR(hr);
-
-                _hook = (RenderHookLib.ISVRenderHook)
-                    Marshal.GetTypedObjectForIUnknown(
-                        hookPtr, typeof(RenderHookLib.ISVRenderHook));
-
-                object netSvc = null;
-                try
-                {
-                    netSvc = Host.Decal.GetObject(
-                        @"services\DecalNet.NetService",
-                        "{AA405035-E001-4CC3-B43A-156206843D64}");
-
-                    _hook.Init(netSvc);
-                }
-                finally
-                {
-                    if (netSvc != null && Marshal.IsComObject(netSvc))
-                    {
-                        try { Marshal.FinalReleaseComObject(netSvc); } catch { }
-                    }
-                }
-
-                _hook.fSlope = false;
-                _hook.fWater = false;
-                _hook.fLight = false;
-                _hook.fEnabled = false;
-
-                _hookReady = true;
+                _hook = new Direct3DLightHook();
+                _hook.Install(device);
+                _hookReady = _hook.Installed;
             }
             catch (Exception ex)
             {
                 _hookReady = false;
-                Fail("RenderHook", ex);
-                ReleaseRenderHook();
-            }
-            finally
-            {
-                if (hookPtr != IntPtr.Zero)
-                {
-                    try { Marshal.Release(hookPtr); } catch { }
-                }
-
-                if (factory != null && Marshal.IsComObject(factory))
-                {
-                    try { Marshal.FinalReleaseComObject(factory); } catch { }
-                }
-
-                if (factoryPtr != IntPtr.Zero)
-                {
-                    try { Marshal.Release(factoryPtr); } catch { }
-                }
+                Fail("Native light hook", ex);
+                ReleaseNativeLightHook();
             }
         }
 
-        private void ReleaseRenderHook()
+        private void ReleaseNativeLightHook()
         {
             try
             {
                 if (_hook != null)
-                {
-                    try { _hook.fLight = false; } catch { }
-                    try { _hook.fEnabled = false; } catch { }
-                    try { _hook.Finalize(); } catch { }
-
-                    try
-                    {
-                        if (Marshal.IsComObject(_hook))
-                            Marshal.FinalReleaseComObject(_hook);
-                    }
-                    catch { }
-                }
+                    _hook.Dispose();
             }
+            catch { }
             finally
             {
                 _hook = null;
                 _hookReady = false;
-
-                if (_renderHookModule != IntPtr.Zero)
-                {
-                    try { FreeLibrary(_renderHookModule); } catch { }
-                    _renderHookModule = IntPtr.Zero;
-                }
             }
         }
 
@@ -357,7 +212,7 @@ namespace ACWorldGamma
         {
             if (!_hookReady || _hook == null)
             {
-                Chat("RenderHook is not available.");
+                Chat("Native light hook is not available.");
                 return;
             }
 
@@ -365,20 +220,12 @@ namespace ACWorldGamma
             {
                 if (!_enabled || _level <= 0)
                 {
-                    _hook.fLight = false;
-                    _hook.fEnabled = false;
+                    _hook.SetLevel(false, 0);
                     return;
                 }
 
                 EnsureLevel();
-
-                int rgb = Math.Min(250, _level * 10);
-                int argb = unchecked((int)0xFF000000) |
-                           (rgb << 16) | (rgb << 8) | rgb;
-
-                _hook.colorLight = argb;
-                _hook.fLight = true;
-                _hook.fEnabled = true;
+                _hook.SetLevel(true, _level);
             }
             catch (Exception ex)
             {
@@ -398,7 +245,7 @@ namespace ACWorldGamma
         private string StatusText()
         {
             if (!_hookReady)
-                return "RenderHook unavailable.";
+                return "Native light hook unavailable.";
 
             if (!_enabled || _level <= 0)
                 return "OFF (normal AC world lighting).";
