@@ -1,74 +1,37 @@
-AC WORLD GAMMA NATIVE TEST
-Version 0.4.0-alpha1
+AC WORLD GAMMA
+Version 0.4.0-rc1
 Publisher: EWARAC
 
 PURPOSE
 -------
-Experimental build of AC World Gamma using an independently written Direct3D9
-light hook. This branch does not require RenderHook.dll or
-Interop.RenderHookLib.dll.
+Adjusts the brightness of the Asheron's Call 3D world without changing the
+2D interface or Windows desktop gamma.
 
 COMMANDS
 --------
 /acgamma on
 /acgamma off
-/acgamma 0
-/acgamma 1
-...
-/acgamma 25
+/acgamma 0-25
 /acgamma up
 /acgamma down
 /acgamma reset
 /acgamma status
 /acgamma help
 
-LEVELS
-------
-0  = normal Asheron's Call world lighting
-1  = smallest extra world-light level
-25 = maximum
+SETTINGS
+--------
+Documents\Decal Plugins\AC World Gamma\Settings.txt
 
-The selected level is saved and restored the next time AC starts.
+The saved setting is shared by AC clients. Existing running clients retain their
+current level; new or reloaded clients read the latest saved value.
 
-INSTALLATION
-------------
-Close Asheron's Call and run:
-
-  AC World Gamma Native Test v0.4.0-alpha1.exe
-
-Default test install location:
-
-  C:\Games\Decal Plugins\AC World Gamma Native Test
-
-IMPORTANT
+TECHNICAL
 ---------
-This installer uses the same Decal plugin GUID as the stable AC World Gamma
-release so Decal loads the test build instead of loading both hooks at once.
+This version uses Decal's render-sink interface to obtain AC's live
+IDirect3DDevice9 and applies brightness at RenderPreUI, after the 3D scene and
+before AC draws its interface.
 
-The stable v0.3.0 files are not overwritten because the test build installs
-into a separate folder.
-
-FIRST TEST
-----------
-Start AC normally and type:
-
-  /acgamma status
-
-Then try:
-
-  /acgamma 1
-  /acgamma 5
-  /acgamma off
-
-Only the 3D world should change brightness.
-
-TECHNICAL NOTE
---------------
-The test build obtains Decal's exposed Direct3D9 device through
-Host.Render.UnsafeDevice and independently intercepts the documented
-IDirect3DDevice9::SetLight entry.
-
-No SkunkVision RenderHook code, COM interface, DLL, or generated interop assembly
-is required by this build.
-
-See NATIVE_HOOK_NOTES.md for implementation provenance and design notes.
+No RenderHook.dll is required.
+No Interop.RenderHookLib.dll is required.
+No Direct3D vtable patching is used.
+No Windows desktop gamma is changed.
