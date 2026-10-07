@@ -14,7 +14,7 @@ namespace ACWorldGamma
     [ComDefaultInterface(typeof(IRender3DSink))]
     public sealed class PluginCore : PluginBase, IRender3DSink
     {
-        private const string Version = "0.4.0-alpha2";
+        private const string Version = "0.4.0-alpha3";
 
         private IInjectService _injectService;
         private bool _registered;
@@ -29,12 +29,18 @@ namespace ACWorldGamma
         private string _deviceRuntimeType = "(none)";
         private string _deviceIUnknown = "(none)";
         private string _device9Query = "(not queried)";
+        private string _postBeginAmbient = "(not read)";
+        private string _postBeginLighting = "(not read)";
+        private string _preEndAmbient = "(not read)";
+        private string _preEndLighting = "(not read)";
+        private long _renderPreUICount;
 
         protected override void Startup()
         {
             try
             {
                 CoreManager.Current.CommandLineText += Current_CommandLineText;
+                Host.Underlying.Hooks.RenderPreUI += Hooks_RenderPreUI;
                 RegisterRenderSink();
 
                 if (_registered)
@@ -59,6 +65,9 @@ namespace ACWorldGamma
             {
                 if (CoreManager.Current != null)
                     CoreManager.Current.CommandLineText -= Current_CommandLineText;
+
+                if (Host != null && Host.Underlying != null && Host.Underlying.Hooks != null)
+                    Host.Underlying.Hooks.RenderPreUI -= Hooks_RenderPreUI;
             }
             catch { }
 
@@ -106,12 +115,14 @@ namespace ACWorldGamma
         {
             Interlocked.Increment(ref _postBeginCount);
             ObserveDevice(direct3D);
+            ReadRenderStatesOnce(direct3D, true);
         }
 
         public void PreEndScene(object direct3D)
         {
             Interlocked.Increment(ref _preEndCount);
             ObserveDevice(direct3D);
+            ReadRenderStatesOnce(direct3D, false);
         }
 
         public void PostEndScene(object direct3D)
@@ -168,6 +179,112 @@ namespace ACWorldGamma
             }
         }
 
+        private void Hooks_RenderPreUI(object sender, EventArgs e)
+        {
+            Interlocked.Increment(ref _renderPreUICount);
+        }
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int GetRenderStateDelegate(IntPtr device, int state, out uint value);
+
+        private void ReadRenderStatesOnce(object direct3D, bool postBegin)
+        {
+            if (direct3D == null)
+                return;
+
+            lock (_deviceLock)
+            {
+                if (postBegin)
+                {
+                    if (_postBeginAmbient != "(not read)")
+                        return;
+                }
+                else
+                {
+                    if (_preEndAmbient != "(not read)")
+                        return;
+                }
+
+                IntPtr pUnk = IntPtr.Zero;
+                IntPtr pDevice9 = IntPtr.Zero;
+
+                try
+                {
+                    pUnk = Marshal.GetIUnknownForObject(direct3D);
+                    Guid iidDevice9 = new Guid("D0223B96-BF7A-43FD-92BD-A43B0D82B9EB");
+
+                    int hr = Marshal.QueryInterface(pUnk, ref iidDevice9, out pDevice9);
+                    if (hr != 0 || pDevice9 == IntPtr.Zero)
+                    {
+                        string failure = "QI failed 0x" + hr.ToString("X8");
+                        if (postBegin)
+                        {
+                            _postBeginAmbient = failure;
+                            _postBeginLighting = failure;
+                        }
+                        else
+                        {
+                            _preEndAmbient = failure;
+                            _preEndLighting = failure;
+                        }
+                        return;
+                    }
+
+                    IntPtr vtable = Marshal.ReadIntPtr(pDevice9);
+                    IntPtr fn = Marshal.ReadIntPtr(vtable, 58 * IntPtr.Size);
+                    GetRenderStateDelegate getRenderState =
+                        (GetRenderStateDelegate)Marshal.GetDelegateForFunctionPointer(
+                            fn, typeof(GetRenderStateDelegate));
+
+                    uint ambient;
+                    uint lighting;
+
+                    int hrAmbient = getRenderState(pDevice9, 26, out ambient);   // D3DRS_AMBIENT
+                    int hrLighting = getRenderState(pDevice9, 137, out lighting); // D3DRS_LIGHTING
+
+                    string ambientText = hrAmbient == 0
+                        ? "0x" + ambient.ToString("X8")
+                        : "HRESULT 0x" + hrAmbient.ToString("X8");
+
+                    string lightingText = hrLighting == 0
+                        ? (lighting != 0 ? "ON (" + lighting + ")" : "OFF (0)")
+                        : "HRESULT 0x" + hrLighting.ToString("X8");
+
+                    if (postBegin)
+                    {
+                        _postBeginAmbient = ambientText;
+                        _postBeginLighting = lightingText;
+                    }
+                    else
+                    {
+                        _preEndAmbient = ambientText;
+                        _preEndLighting = lightingText;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    string failure = ex.GetType().Name + ": " + ex.Message;
+                    if (postBegin)
+                    {
+                        _postBeginAmbient = failure;
+                        _postBeginLighting = failure;
+                    }
+                    else
+                    {
+                        _preEndAmbient = failure;
+                        _preEndLighting = failure;
+                    }
+                }
+                finally
+                {
+                    if (pDevice9 != IntPtr.Zero)
+                        Marshal.Release(pDevice9);
+                    if (pUnk != IntPtr.Zero)
+                        Marshal.Release(pUnk);
+                }
+            }
+        }
+
         private void Current_CommandLineText(object sender, ChatParserInterceptEventArgs e)
         {
             try
@@ -212,6 +329,7 @@ namespace ACWorldGamma
 
             Chat("Callbacks: PreBegin=" + Interlocked.Read(ref _preBeginCount) +
                  ", PostBegin=" + Interlocked.Read(ref _postBeginCount) +
+                 ", RenderPreUI=" + Interlocked.Read(ref _renderPreUICount) +
                  ", PreEnd=" + Interlocked.Read(ref _preEndCount) +
                  ", PostEnd=" + Interlocked.Read(ref _postEndCount));
 
@@ -220,6 +338,10 @@ namespace ACWorldGamma
                 Chat("D3D callback object = " + _deviceRuntimeType +
                      "; IUnknown = " + _deviceIUnknown);
                 Chat("IDirect3DDevice9 QueryInterface = " + _device9Query);
+                Chat("PostBeginScene: AMBIENT=" + _postBeginAmbient +
+                     ", LIGHTING=" + _postBeginLighting);
+                Chat("PreEndScene: AMBIENT=" + _preEndAmbient +
+                     ", LIGHTING=" + _preEndLighting);
             }
         }
 
