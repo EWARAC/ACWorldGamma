@@ -9,7 +9,7 @@ using Microsoft.Win32;
 internal static class Installer
 {
     private const string AppName = "AC World Gamma";
-    private const string Version = "0.4.0-rc1a";
+    private const string Version = "0.4.0";
     private const string PluginGuid = "{A9D7C4AA-2A2E-4D2D-9F83-7B728C37E8D4}";
     private const string Surrogate = "{71A69713-6593-47EC-0002-0000000DECA1}";
     private const string InstallDir = @"C:\Games\Decal Plugins\AC World Gamma";
