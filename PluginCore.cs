@@ -272,13 +272,25 @@ namespace ACWorldGamma
                 Chat("PROBE: internalRender runtime type = " +
                     internalRender.GetType().FullName);
 
-                PropertyInfo deviceProperty = internalRenderField.FieldType.GetProperty(
+                Type declaredRenderType = internalRenderField.FieldType;
+                Type renderInterface = declaredRenderType.Assembly.GetType(
+                    "Decal.Interop.Render.IRenderService");
+
+                if (renderInterface == null)
+                {
+                    Chat("PROBE: IRenderService interface not found.");
+                    return;
+                }
+
+                Chat("PROBE: IRenderService found = " + renderInterface.FullName);
+
+                PropertyInfo deviceProperty = renderInterface.GetProperty(
                     "Device",
                     BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
                 if (deviceProperty == null)
                 {
-                    Chat("PROBE: RenderService.Device property not found.");
+                    Chat("PROBE: IRenderService.Device property not found.");
                     return;
                 }
 
@@ -290,12 +302,12 @@ namespace ACWorldGamma
                 catch (TargetInvocationException ex)
                 {
                     Exception inner = ex.InnerException ?? ex;
-                    Chat("PROBE: RenderService.Device threw " +
+                    Chat("PROBE: IRenderService.Device threw " +
                         inner.GetType().Name + ": " + inner.Message);
                     return;
                 }
 
-                Chat("PROBE: RenderService.Device = " +
+                Chat("PROBE: IRenderService.Device = " +
                     (rawDevice == null ? "NULL" : rawDevice.GetType().FullName));
 
                 if (rawDevice != null)
