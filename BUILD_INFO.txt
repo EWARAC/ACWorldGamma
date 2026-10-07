@@ -1,4 +1,4 @@
-AC World Gamma v0.4.0-rc1
+AC World Gamma v0.4.0
 
 Plugin GUID:
   {A9D7C4AA-2A2E-4D2D-9F83-7B728C37E8D4}
