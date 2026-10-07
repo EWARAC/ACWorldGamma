@@ -70,7 +70,7 @@ internal static class Uninstaller
             }
 
             string cmd =
-                "/c ping 127.0.0.1 -n 3 > nul & rmdir /s /q "" + dir + """;
+                "/c ping 127.0.0.1 -n 3 > nul & rmdir /s /q \"" + dir + "\"";
 
             Process.Start(new ProcessStartInfo
             {
