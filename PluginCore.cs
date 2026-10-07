@@ -14,7 +14,7 @@ namespace ACWorldGamma
     [ComDefaultInterface(typeof(IRender3DSink))]
     public sealed class PluginCore : PluginBase, IRender3DSink
     {
-        private const string Version = "0.4.0-alpha4";
+        private const string Version = "0.4.0-alpha5";
 
         private IInjectService _injectService;
         private bool _registered;
@@ -38,6 +38,12 @@ namespace ACWorldGamma
         private volatile bool _sampleLightRequested = true;
         private volatile bool _postBeginLightCaptured;
         private long _renderPreUICount;
+
+        private readonly object _renderDeviceLock = new object();
+        private IntPtr _renderDevice9 = IntPtr.Zero;
+        private volatile bool _overlayEnabled;
+        private int _overlayPercent = 12;
+        private string _overlayStatus = "OFF";
 
         protected override void Startup()
         {
@@ -79,6 +85,15 @@ namespace ACWorldGamma
             // Do not manually ReleaseComObject here; just drop our managed reference.
             _injectService = null;
             _registered = false;
+
+            lock (_renderDeviceLock)
+            {
+                if (_renderDevice9 != IntPtr.Zero)
+                {
+                    Marshal.Release(_renderDevice9);
+                    _renderDevice9 = IntPtr.Zero;
+                }
+            }
         }
 
         private void RegisterRenderSink()
@@ -113,6 +128,7 @@ namespace ACWorldGamma
         {
             Interlocked.Increment(ref _preBeginCount);
             ObserveDevice(direct3D);
+            CaptureRenderDevice(direct3D);
         }
 
         public void PostBeginScene(object direct3D)
@@ -197,6 +213,254 @@ namespace ACWorldGamma
         private void Hooks_RenderPreUI()
         {
             Interlocked.Increment(ref _renderPreUICount);
+
+            if (_overlayEnabled)
+                DrawBrightnessOverlay();
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct D3DViewport9
+        {
+            public uint X;
+            public uint Y;
+            public uint Width;
+            public uint Height;
+            public float MinZ;
+            public float MaxZ;
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 4)]
+        private struct OverlayVertex
+        {
+            public float X;
+            public float Y;
+            public float Z;
+            public float Rhw;
+            public uint Color;
+
+            public OverlayVertex(float x, float y, float z, float rhw, uint color)
+            {
+                X = x;
+                Y = y;
+                Z = z;
+                Rhw = rhw;
+                Color = color;
+            }
+        }
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int GetViewportDelegate(IntPtr device, out D3DViewport9 viewport);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int CreateStateBlockDelegate(IntPtr device, int type, out IntPtr stateBlock);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int SetRenderStateDelegate(IntPtr device, int state, uint value);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int SetTextureDelegate(IntPtr device, uint stage, IntPtr texture);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int SetTextureStageStateDelegate(IntPtr device, uint stage, int type, uint value);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int DrawPrimitiveUPDelegate(
+            IntPtr device, int primitiveType, uint primitiveCount,
+            IntPtr vertexData, uint vertexStride);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int SetFVFDelegate(IntPtr device, uint fvf);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int StateBlockApplyDelegate(IntPtr stateBlock);
+
+        private void CaptureRenderDevice(object direct3D)
+        {
+            if (direct3D == null)
+                return;
+
+            IntPtr pUnk = IntPtr.Zero;
+            IntPtr pDevice9 = IntPtr.Zero;
+
+            try
+            {
+                pUnk = Marshal.GetIUnknownForObject(direct3D);
+                Guid iidDevice9 = new Guid("D0223B96-BF7A-43FD-92BD-A43B0D82B9EB");
+                int hr = Marshal.QueryInterface(pUnk, ref iidDevice9, out pDevice9);
+
+                if (hr != 0 || pDevice9 == IntPtr.Zero)
+                    return;
+
+                lock (_renderDeviceLock)
+                {
+                    if (_renderDevice9 == pDevice9)
+                    {
+                        Marshal.Release(pDevice9);
+                        pDevice9 = IntPtr.Zero;
+                    }
+                    else
+                    {
+                        if (_renderDevice9 != IntPtr.Zero)
+                            Marshal.Release(_renderDevice9);
+
+                        _renderDevice9 = pDevice9;
+                        pDevice9 = IntPtr.Zero;
+                    }
+                }
+            }
+            catch
+            {
+            }
+            finally
+            {
+                if (pDevice9 != IntPtr.Zero)
+                    Marshal.Release(pDevice9);
+                if (pUnk != IntPtr.Zero)
+                    Marshal.Release(pUnk);
+            }
+        }
+
+        private void DrawBrightnessOverlay()
+        {
+            IntPtr device = IntPtr.Zero;
+            IntPtr stateBlock = IntPtr.Zero;
+            GCHandle pinned = new GCHandle();
+
+            try
+            {
+                lock (_renderDeviceLock)
+                {
+                    if (_renderDevice9 == IntPtr.Zero)
+                    {
+                        _overlayStatus = "waiting for D3D9 device";
+                        return;
+                    }
+
+                    device = _renderDevice9;
+                    Marshal.AddRef(device);
+                }
+
+                IntPtr vtable = Marshal.ReadIntPtr(device);
+
+                GetViewportDelegate getViewport =
+                    (GetViewportDelegate)Marshal.GetDelegateForFunctionPointer(
+                        Marshal.ReadIntPtr(vtable, 48 * IntPtr.Size), typeof(GetViewportDelegate));
+                CreateStateBlockDelegate createStateBlock =
+                    (CreateStateBlockDelegate)Marshal.GetDelegateForFunctionPointer(
+                        Marshal.ReadIntPtr(vtable, 59 * IntPtr.Size), typeof(CreateStateBlockDelegate));
+                SetRenderStateDelegate setRenderState =
+                    (SetRenderStateDelegate)Marshal.GetDelegateForFunctionPointer(
+                        Marshal.ReadIntPtr(vtable, 57 * IntPtr.Size), typeof(SetRenderStateDelegate));
+                SetTextureDelegate setTexture =
+                    (SetTextureDelegate)Marshal.GetDelegateForFunctionPointer(
+                        Marshal.ReadIntPtr(vtable, 65 * IntPtr.Size), typeof(SetTextureDelegate));
+                SetTextureStageStateDelegate setTextureStageState =
+                    (SetTextureStageStateDelegate)Marshal.GetDelegateForFunctionPointer(
+                        Marshal.ReadIntPtr(vtable, 67 * IntPtr.Size), typeof(SetTextureStageStateDelegate));
+                DrawPrimitiveUPDelegate drawPrimitiveUP =
+                    (DrawPrimitiveUPDelegate)Marshal.GetDelegateForFunctionPointer(
+                        Marshal.ReadIntPtr(vtable, 83 * IntPtr.Size), typeof(DrawPrimitiveUPDelegate));
+                SetFVFDelegate setFVF =
+                    (SetFVFDelegate)Marshal.GetDelegateForFunctionPointer(
+                        Marshal.ReadIntPtr(vtable, 89 * IntPtr.Size), typeof(SetFVFDelegate));
+
+                D3DViewport9 viewport;
+                int hr = getViewport(device, out viewport);
+                if (hr != 0 || viewport.Width == 0 || viewport.Height == 0)
+                {
+                    _overlayStatus = "GetViewport failed 0x" + hr.ToString("X8");
+                    return;
+                }
+
+                hr = createStateBlock(device, 1, out stateBlock); // D3DSBT_ALL
+                if (hr != 0 || stateBlock == IntPtr.Zero)
+                {
+                    _overlayStatus = "CreateStateBlock failed 0x" + hr.ToString("X8");
+                    return;
+                }
+
+                setTexture(device, 0, IntPtr.Zero);
+                setRenderState(device, 7, 0);    // D3DRS_ZENABLE
+                setRenderState(device, 14, 0);   // D3DRS_ZWRITEENABLE
+                setRenderState(device, 15, 0);   // D3DRS_ALPHATESTENABLE
+                setRenderState(device, 19, 5);   // D3DRS_SRCBLEND = SRCALPHA
+                setRenderState(device, 20, 6);   // D3DRS_DESTBLEND = INVSRCALPHA
+                setRenderState(device, 22, 1);   // D3DRS_CULLMODE = NONE
+                setRenderState(device, 27, 1);   // D3DRS_ALPHABLENDENABLE
+                setRenderState(device, 28, 0);   // D3DRS_FOGENABLE
+                setRenderState(device, 52, 0);   // D3DRS_STENCILENABLE
+                setRenderState(device, 137, 0);  // D3DRS_LIGHTING
+                setRenderState(device, 141, 1);  // D3DRS_COLORVERTEX
+
+                setTextureStageState(device, 0, 1, 2); // COLOROP = SELECTARG1
+                setTextureStageState(device, 0, 2, 0); // COLORARG1 = DIFFUSE
+                setTextureStageState(device, 0, 4, 2); // ALPHAOP = SELECTARG1
+                setTextureStageState(device, 0, 5, 0); // ALPHAARG1 = DIFFUSE
+                setTextureStageState(device, 1, 1, 1); // stage 1 COLOROP = DISABLE
+
+                const uint D3DFVF_XYZRHW_DIFFUSE = 0x00000044;
+                setFVF(device, D3DFVF_XYZRHW_DIFFUSE);
+
+                int pct = _overlayPercent;
+                if (pct < 0) pct = 0;
+                if (pct > 100) pct = 100;
+                uint alpha = (uint)((pct * 255 + 50) / 100);
+                uint color = (alpha << 24) | 0x00FFFFFFu;
+
+                float left = viewport.X - 0.5f;
+                float top = viewport.Y - 0.5f;
+                float right = viewport.X + viewport.Width - 0.5f;
+                float bottom = viewport.Y + viewport.Height - 0.5f;
+
+                OverlayVertex[] vertices = new OverlayVertex[]
+                {
+                    new OverlayVertex(left,  top,    0.0f, 1.0f, color),
+                    new OverlayVertex(right, top,    0.0f, 1.0f, color),
+                    new OverlayVertex(left,  bottom, 0.0f, 1.0f, color),
+                    new OverlayVertex(right, bottom, 0.0f, 1.0f, color)
+                };
+
+                pinned = GCHandle.Alloc(vertices, GCHandleType.Pinned);
+                hr = drawPrimitiveUP(
+                    device, 5, 2, pinned.AddrOfPinnedObject(),
+                    (uint)Marshal.SizeOf(typeof(OverlayVertex)));
+
+                if (hr == 0)
+                    _overlayStatus = "ON at " + pct + "%";
+                else
+                    _overlayStatus = "DrawPrimitiveUP failed 0x" + hr.ToString("X8");
+            }
+            catch (Exception ex)
+            {
+                _overlayStatus = ex.GetType().Name + ": " + ex.Message;
+                _overlayEnabled = false;
+            }
+            finally
+            {
+                if (pinned.IsAllocated)
+                    pinned.Free();
+
+                if (stateBlock != IntPtr.Zero)
+                {
+                    try
+                    {
+                        IntPtr sbVtable = Marshal.ReadIntPtr(stateBlock);
+                        StateBlockApplyDelegate apply =
+                            (StateBlockApplyDelegate)Marshal.GetDelegateForFunctionPointer(
+                                Marshal.ReadIntPtr(sbVtable, 5 * IntPtr.Size),
+                                typeof(StateBlockApplyDelegate));
+                        apply(stateBlock);
+                    }
+                    catch
+                    {
+                    }
+
+                    Marshal.Release(stateBlock);
+                }
+
+                if (device != IntPtr.Zero)
+                    Marshal.Release(device);
+            }
         }
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
@@ -435,7 +699,7 @@ namespace ACWorldGamma
                 if (rest.Length == 0 ||
                     String.Equals(rest, "help", StringComparison.OrdinalIgnoreCase))
                 {
-                    Chat("Diagnostic commands: /acgamma probe | status | sample");
+                    Chat("Diagnostic commands: /acgamma probe | sample | test on | test off | test 1-30");
                     return;
                 }
 
@@ -453,7 +717,40 @@ namespace ACWorldGamma
                     return;
                 }
 
-                Chat("This diagnostic build does not alter lighting. Use /acgamma probe or /acgamma sample.");
+                if (String.Equals(rest, "test on", StringComparison.OrdinalIgnoreCase))
+                {
+                    _overlayEnabled = true;
+                    _overlayStatus = "enabled; waiting for RenderPreUI";
+                    Chat("World-only pre-UI brightness test ON at " + _overlayPercent + "%.");
+                    return;
+                }
+
+                if (String.Equals(rest, "test off", StringComparison.OrdinalIgnoreCase))
+                {
+                    _overlayEnabled = false;
+                    _overlayStatus = "OFF";
+                    Chat("World-only pre-UI brightness test OFF.");
+                    return;
+                }
+
+                if (rest.StartsWith("test ", StringComparison.OrdinalIgnoreCase))
+                {
+                    int pct;
+                    if (Int32.TryParse(rest.Substring(5).Trim(), out pct) && pct >= 1 && pct <= 30)
+                    {
+                        _overlayPercent = pct;
+                        _overlayEnabled = true;
+                        _overlayStatus = "enabled; waiting for RenderPreUI";
+                        Chat("World-only pre-UI brightness test ON at " + pct + "%.");
+                    }
+                    else
+                    {
+                        Chat("Use /acgamma test 1-30, /acgamma test on, or /acgamma test off.");
+                    }
+                    return;
+                }
+
+                Chat("Use /acgamma probe, /acgamma sample, or /acgamma test on|off|1-30.");
             }
             catch (Exception ex)
             {
@@ -483,6 +780,7 @@ namespace ACWorldGamma
                      ", LIGHTING=" + _preEndLighting);
                 Chat("PostBeginScene Light 0: " + _postBeginLight0);
                 Chat("PreEndScene Light 0: " + _preEndLight0);
+                Chat("Pre-UI brightness test = " + _overlayStatus);
             }
         }
 
