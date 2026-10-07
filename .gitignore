@@ -1,0 +1,7 @@
+build/
+release/
+*.user
+*.suo
+*.pdb
+*.cache
+.vs/
