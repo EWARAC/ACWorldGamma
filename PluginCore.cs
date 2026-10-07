@@ -1,4 +1,6 @@
 using System;
+using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Decal.Adapter;
@@ -7,14 +9,14 @@ using Decal.Interop.Inject;
 
 namespace ACWorldGamma
 {
-    [FriendlyName("AC World Gamma Render Sink Diagnostic")]
+    [FriendlyName("AC World Gamma")]
     [Guid("A9D7C4AA-2A2E-4D2D-9F83-7B728C37E8D4")]
     [ComVisible(true)]
     [ClassInterface(ClassInterfaceType.None)]
     [ComDefaultInterface(typeof(IRender3DSink))]
     public sealed class PluginCore : PluginBase, IRender3DSink
     {
-        private const string Version = "0.4.0-alpha5";
+        private const string Version = "0.4.0-alpha6";
 
         private IInjectService _injectService;
         private bool _registered;
@@ -45,6 +47,21 @@ namespace ACWorldGamma
         private int _overlayPercent = 12;
         private string _overlayStatus = "OFF";
 
+        private string SettingsDirectory
+        {
+            get
+            {
+                return Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    @"Decal Plugins\AC World Gamma");
+            }
+        }
+
+        private string SettingsFile
+        {
+            get { return Path.Combine(SettingsDirectory, "Settings.txt"); }
+        }
+
         protected override void Startup()
         {
             try
@@ -55,7 +72,9 @@ namespace ACWorldGamma
 
                 if (_registered)
                 {
-                    Chat("v" + Version + " render-sink diagnostic loaded. No lighting changes are made.");
+                    LoadSettings();
+                    ApplyCurrentSetting();
+                    Chat("v" + Version + " loaded. " + StatusText());
                 }
                 else
                 {
@@ -693,18 +712,90 @@ namespace ACWorldGamma
                     return;
 
                 e.Eat = true;
-
                 string rest = raw.Length > 8 ? raw.Substring(8).Trim() : "";
 
                 if (rest.Length == 0 ||
                     String.Equals(rest, "help", StringComparison.OrdinalIgnoreCase))
                 {
-                    Chat("Diagnostic commands: /acgamma probe | sample | test on | test off | test 1-30");
+                    Chat("Commands: /acgamma on | off | 0-25 | up | down | reset | status");
                     return;
                 }
 
-                if (String.Equals(rest, "probe", StringComparison.OrdinalIgnoreCase) ||
-                    String.Equals(rest, "status", StringComparison.OrdinalIgnoreCase))
+                if (String.Equals(rest, "status", StringComparison.OrdinalIgnoreCase))
+                {
+                    Chat(StatusText());
+                    return;
+                }
+
+                if (String.Equals(rest, "on", StringComparison.OrdinalIgnoreCase))
+                {
+                    _overlayEnabled = true;
+                    EnsureLevel();
+                    ApplyCurrentSetting();
+                    SaveSettings();
+                    Chat(StatusText());
+                    return;
+                }
+
+                if (String.Equals(rest, "off", StringComparison.OrdinalIgnoreCase))
+                {
+                    _overlayEnabled = false;
+                    ApplyCurrentSetting();
+                    SaveSettings();
+                    Chat(StatusText());
+                    return;
+                }
+
+                if (String.Equals(rest, "reset", StringComparison.OrdinalIgnoreCase))
+                {
+                    _overlayEnabled = false;
+                    _overlayPercent = 1;
+                    ApplyCurrentSetting();
+                    SaveSettings();
+                    Chat("reset to normal world lighting.");
+                    return;
+                }
+
+                if (String.Equals(rest, "up", StringComparison.OrdinalIgnoreCase))
+                {
+                    _overlayPercent = Math.Min(25, _overlayPercent + 1);
+                    _overlayEnabled = true;
+                    ApplyCurrentSetting();
+                    SaveSettings();
+                    Chat(StatusText());
+                    return;
+                }
+
+                if (String.Equals(rest, "down", StringComparison.OrdinalIgnoreCase))
+                {
+                    _overlayPercent = Math.Max(0, _overlayPercent - 1);
+                    _overlayEnabled = _overlayPercent > 0;
+                    ApplyCurrentSetting();
+                    SaveSettings();
+                    Chat(StatusText());
+                    return;
+                }
+
+                int requested;
+                if (Int32.TryParse(rest, NumberStyles.Integer,
+                    CultureInfo.InvariantCulture, out requested))
+                {
+                    if (requested < 0 || requested > 25)
+                    {
+                        Chat("level must be from 0 to 25.");
+                        return;
+                    }
+
+                    _overlayPercent = requested;
+                    _overlayEnabled = requested > 0;
+                    ApplyCurrentSetting();
+                    SaveSettings();
+                    Chat(StatusText());
+                    return;
+                }
+
+                // Keep diagnostics available during the alpha test, but out of normal help.
+                if (String.Equals(rest, "probe", StringComparison.OrdinalIgnoreCase))
                 {
                     ReportStatus();
                     return;
@@ -717,44 +808,98 @@ namespace ACWorldGamma
                     return;
                 }
 
-                if (String.Equals(rest, "test on", StringComparison.OrdinalIgnoreCase))
-                {
-                    _overlayEnabled = true;
-                    _overlayStatus = "enabled; waiting for RenderPreUI";
-                    Chat("World-only pre-UI brightness test ON at " + _overlayPercent + "%.");
-                    return;
-                }
-
-                if (String.Equals(rest, "test off", StringComparison.OrdinalIgnoreCase))
-                {
-                    _overlayEnabled = false;
-                    _overlayStatus = "OFF";
-                    Chat("World-only pre-UI brightness test OFF.");
-                    return;
-                }
-
-                if (rest.StartsWith("test ", StringComparison.OrdinalIgnoreCase))
-                {
-                    int pct;
-                    if (Int32.TryParse(rest.Substring(5).Trim(), out pct) && pct >= 1 && pct <= 30)
-                    {
-                        _overlayPercent = pct;
-                        _overlayEnabled = true;
-                        _overlayStatus = "enabled; waiting for RenderPreUI";
-                        Chat("World-only pre-UI brightness test ON at " + pct + "%.");
-                    }
-                    else
-                    {
-                        Chat("Use /acgamma test 1-30, /acgamma test on, or /acgamma test off.");
-                    }
-                    return;
-                }
-
-                Chat("Use /acgamma probe, /acgamma sample, or /acgamma test on|off|1-30.");
+                Chat("Commands: /acgamma on | off | 0-25 | up | down | reset | status");
             }
             catch (Exception ex)
             {
                 Chat("Command error: " + ex.GetType().Name + ": " + ex.Message);
+            }
+        }
+
+        private void ApplyCurrentSetting()
+        {
+            if (!_registered)
+            {
+                _overlayEnabled = false;
+                _overlayStatus = "render sink unavailable";
+                return;
+            }
+
+            if (!_overlayEnabled || _overlayPercent <= 0)
+            {
+                _overlayEnabled = false;
+                _overlayStatus = "OFF";
+                return;
+            }
+
+            EnsureLevel();
+            _overlayStatus = "enabled; waiting for RenderPreUI";
+        }
+
+        private void EnsureLevel()
+        {
+            if (_overlayPercent < 1)
+                _overlayPercent = 1;
+            if (_overlayPercent > 25)
+                _overlayPercent = 25;
+        }
+
+        private string StatusText()
+        {
+            if (!_registered)
+                return "render sink unavailable.";
+
+            if (!_overlayEnabled || _overlayPercent <= 0)
+                return "OFF (normal AC world lighting).";
+
+            return "ON, world brightness level " +
+                _overlayPercent.ToString(CultureInfo.InvariantCulture) + " of 25.";
+        }
+
+        private void LoadSettings()
+        {
+            try
+            {
+                if (!File.Exists(SettingsFile))
+                    return;
+
+                string[] lines = File.ReadAllLines(SettingsFile);
+
+                if (lines.Length >= 1)
+                {
+                    bool enabled;
+                    if (Boolean.TryParse(lines[0], out enabled))
+                        _overlayEnabled = enabled;
+                }
+
+                if (lines.Length >= 2)
+                {
+                    int level;
+                    if (Int32.TryParse(lines[1], NumberStyles.Integer,
+                        CultureInfo.InvariantCulture, out level))
+                    {
+                        _overlayPercent = Math.Max(0, Math.Min(25, level));
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        private void SaveSettings()
+        {
+            try
+            {
+                Directory.CreateDirectory(SettingsDirectory);
+                File.WriteAllLines(SettingsFile, new string[]
+                {
+                    _overlayEnabled.ToString(),
+                    _overlayPercent.ToString(CultureInfo.InvariantCulture)
+                });
+            }
+            catch
+            {
             }
         }
 
