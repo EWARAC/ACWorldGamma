@@ -21,7 +21,7 @@ if exist "%~dp0release" rmdir /s /q "%~dp0release"
 mkdir "%~dp0build"
 mkdir "%~dp0release"
 
-echo Building AC World Gamma v0.4.0-rc1a plugin...
+echo Building AC World Gamma v0.4.0 plugin...
 "%CSC%" /nologo /target:library /platform:x86 /optimize+ ^
  /out:"%~dp0build\ACWorldGamma.dll" ^
  /reference:"%DECAL%" ^
@@ -41,7 +41,7 @@ if errorlevel 1 goto :fail
 
 echo Building self-contained installer...
 "%CSC%" /nologo /target:winexe /platform:x86 /optimize+ ^
- /out:"%~dp0release\AC World Gamma Setup v0.4.0-rc1a.exe" ^
+ /out:"%~dp0release\AC World Gamma Setup v0.4.0.exe" ^
  /reference:System.dll ^
  /reference:System.Windows.Forms.dll ^
  /resource:"%~dp0build\ACWorldGamma.dll",ACWorldGamma.dll ^
