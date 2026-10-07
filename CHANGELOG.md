@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0-rc1
+## 0.4.0
 
 - Replaced the SkunkVision RenderHook dependency with an independent Decal/Direct3D9 rendering path.
 - Brightness is applied at Decal RenderPreUI, after the 3D scene and before the AC interface.
