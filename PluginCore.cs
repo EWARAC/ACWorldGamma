@@ -74,15 +74,21 @@ namespace ACWorldGamma
                 _lastHookError = "";
 
                 object device = Host.Render.UnsafeDevice;
-                if (device == null)
-                {
-                    _hookReady = false;
-                    _lastHookError = "Decal returned no Direct3D device.";
-                    return;
-                }
 
                 _hook = new Direct3DLightHook();
-                _hook.Install(device);
+
+                if (device != null)
+                {
+                    _hook.Install(device);
+                }
+                else
+                {
+                    // Decal 2.9.8.3 can return NULL for UnsafeDevice even though
+                    // AC is actively using d3d9.dll. Fall back to a private D3D9
+                    // device so we can patch the runtime's SetLight method table.
+                    _hook.InstallUsingPrivateDevice();
+                }
+
                 _hookReady = _hook.Installed;
 
                 if (!_hookReady)
