@@ -51,7 +51,7 @@ namespace ACWorldGamma
         {
             get
             {
-                return Path.Combine(
+                return System.IO.Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                     @"Decal Plugins\AC World Gamma");
             }
@@ -59,7 +59,7 @@ namespace ACWorldGamma
 
         private string SettingsFile
         {
-            get { return Path.Combine(SettingsDirectory, "Settings.txt"); }
+            get { return System.IO.Path.Combine(SettingsDirectory, "Settings.txt"); }
         }
 
         protected override void Startup()
