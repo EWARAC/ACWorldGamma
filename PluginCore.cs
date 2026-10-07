@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using Decal.Adapter;
 
@@ -130,7 +131,7 @@ namespace ACWorldGamma
                 if (rest.Length == 0 ||
                     String.Equals(rest, "help", StringComparison.OrdinalIgnoreCase))
                 {
-                    Chat("Commands: /acgamma on | off | 0-25 | up | down | reset | status");
+                    Chat("Commands: /acgamma on | off | 0-25 | up | down | reset | status | probe");
                     return;
                 }
 
@@ -140,6 +141,12 @@ namespace ACWorldGamma
                         InitializeNativeLightHook();
 
                     Chat(StatusText());
+                    return;
+                }
+
+                if (String.Equals(rest, "probe", StringComparison.OrdinalIgnoreCase))
+                {
+                    ProbeRenderDevice();
                     return;
                 }
 
@@ -216,6 +223,100 @@ namespace ACWorldGamma
             catch (Exception ex)
             {
                 Fail("Command", ex);
+            }
+        }
+
+        private void ProbeRenderDevice()
+        {
+            try
+            {
+                object wrapper = Host.Render;
+                if (wrapper == null)
+                {
+                    Chat("PROBE: Host.Render is null.");
+                    return;
+                }
+
+                Chat("PROBE: Host.Render type = " + wrapper.GetType().FullName);
+
+                object unsafeDevice = null;
+                try
+                {
+                    unsafeDevice = Host.Render.UnsafeDevice;
+                }
+                catch (Exception ex)
+                {
+                    Chat("PROBE: UnsafeDevice threw " + ex.GetType().Name + ": " + ex.Message);
+                }
+
+                Chat("PROBE: UnsafeDevice = " +
+                    (unsafeDevice == null ? "NULL" : unsafeDevice.GetType().FullName));
+
+                FieldInfo internalRenderField = wrapper.GetType().GetField(
+                    "internalRender",
+                    BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+                if (internalRenderField == null)
+                {
+                    Chat("PROBE: internalRender field not found.");
+                    return;
+                }
+
+                object internalRender = internalRenderField.GetValue(wrapper);
+                if (internalRender == null)
+                {
+                    Chat("PROBE: internalRender = NULL.");
+                    return;
+                }
+
+                Chat("PROBE: internalRender runtime type = " +
+                    internalRender.GetType().FullName);
+
+                PropertyInfo deviceProperty = internalRenderField.FieldType.GetProperty(
+                    "Device",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+                if (deviceProperty == null)
+                {
+                    Chat("PROBE: RenderService.Device property not found.");
+                    return;
+                }
+
+                object rawDevice = null;
+                try
+                {
+                    rawDevice = deviceProperty.GetValue(internalRender, null);
+                }
+                catch (TargetInvocationException ex)
+                {
+                    Exception inner = ex.InnerException ?? ex;
+                    Chat("PROBE: RenderService.Device threw " +
+                        inner.GetType().Name + ": " + inner.Message);
+                    return;
+                }
+
+                Chat("PROBE: RenderService.Device = " +
+                    (rawDevice == null ? "NULL" : rawDevice.GetType().FullName));
+
+                if (rawDevice != null)
+                {
+                    IntPtr pUnk = IntPtr.Zero;
+                    try
+                    {
+                        pUnk = Marshal.GetIUnknownForObject(rawDevice);
+                        Chat("PROBE: Device IUnknown = 0x" +
+                            pUnk.ToInt64().ToString("X"));
+                    }
+                    finally
+                    {
+                        if (pUnk != IntPtr.Zero)
+                            Marshal.Release(pUnk);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Chat("PROBE error: " + ex.GetType().Name + ": " + ex.Message);
             }
         }
 
