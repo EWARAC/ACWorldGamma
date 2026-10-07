@@ -179,7 +179,7 @@ namespace ACWorldGamma
             }
         }
 
-        private void Hooks_RenderPreUI(object sender, EventArgs e)
+        private void Hooks_RenderPreUI()
         {
             Interlocked.Increment(ref _renderPreUICount);
         }
