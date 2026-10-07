@@ -1,19 +1,41 @@
 THIRD-PARTY NOTICE
 
-AC World Gamma includes the SkunkVision RenderHook component and its generated
-managed COM interop assembly.
+AC World Gamma includes and uses the SkunkVision RenderHook component and its
+generated managed COM interop assembly.
 
-Original SkunkVision was written by Gregory Kusnick / SkunkWorks.
-The public source states that SkunkVision was released under the MIT License.
+PROVENANCE
+----------
 
-The VirindiViews port contains C# frontend work by Virindi and retains the
-original MIT permission notice.
+AC World Gamma did NOT originate RenderHook.dll.
+
+RenderHook.dll is the RenderHook component from SkunkVision, originally
+developed by Greg Kusnick (SourceForge user: gkusnick) / SkunkWorks.
+
+Interop.RenderHookLib.dll is the managed COM interop assembly for the
+RenderHook type library.
+
+Original project:
+  SkunkWorks on SourceForge
+  https://sourceforge.net/projects/skunkworks/
+
+Original SkunkVision RenderHook source tree:
+  https://sourceforge.net/p/skunkworks/code/HEAD/tree/SkunkVision/trunk/RenderHook/
+
+SourceForge identifies the SkunkWorks project as maintained by gkusnick and
+currently lists the project license as the MIT License.
 
 The relevant public source identifies:
   RenderHook.SVRenderHook
   CLSID {084DB7D3-FCA8-4C37-8748-18232FE9CF9A}
   ISVRenderHook IID {F5E367AA-6FC9-473B-8BC8-9060C25EFA39}
   Direct3D9 SetLight interception used for world lighting
+
+AC World Gamma uses this third-party rendering component. The AC World Gamma
+control/plugin code in this repository is separate work and should not be
+mistaken for the original RenderHook implementation.
+
+The VirindiViews port contains C# frontend work by Virindi and retains the
+original MIT permission notice.
 
 MIT License permission notice:
 
