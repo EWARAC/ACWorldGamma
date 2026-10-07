@@ -8,7 +8,7 @@ using Microsoft.Win32;
 
 internal static class Uninstaller
 {
-    private const string AppName = "AC World Gamma";
+    private const string AppName = "AC World Gamma Native Test";
     private const string PluginGuid = "{A9D7C4AA-2A2E-4D2D-9F83-7B728C37E8D4}";
 
     [STAThread]
@@ -25,7 +25,7 @@ internal static class Uninstaller
             if (Process.GetProcessesByName("acclient").Length > 0)
             {
                 MessageBox.Show(
-                    "Please close Asheron's Call before removing AC World Gamma.",
+                    "Please close Asheron's Call before removing the native-hook test.",
                     AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -52,10 +52,8 @@ internal static class Uninstaller
             string[] files = new string[]
             {
                 "ACWorldGamma.dll",
-                "RenderHook.dll",
-                "Interop.RenderHookLib.dll",
                 "README.txt",
-                "THIRD_PARTY_NOTES.txt"
+                "NATIVE_HOOK_NOTES.md"
             };
 
             foreach (string file in files)
