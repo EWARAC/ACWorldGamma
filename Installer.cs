@@ -8,11 +8,11 @@ using Microsoft.Win32;
 
 internal static class Installer
 {
-    private const string AppName = "AC World Gamma";
-    private const string Version = "0.3.0";
+    private const string AppName = "AC World Gamma Native Test";
+    private const string Version = "0.4.0-alpha1";
     private const string PluginGuid = "{A9D7C4AA-2A2E-4D2D-9F83-7B728C37E8D4}";
     private const string Surrogate = "{71A69713-6593-47EC-0002-0000000DECA1}";
-    private const string InstallDir = @"C:\Games\Decal Plugins\AC World Gamma";
+    private const string InstallDir = @"C:\Games\Decal Plugins\AC World Gamma Native Test";
 
     [STAThread]
     private static void Main()
@@ -28,7 +28,7 @@ internal static class Installer
             if (Process.GetProcessesByName("acclient").Length > 0)
             {
                 MessageBox.Show(
-                    "Please close Asheron's Call before installing AC World Gamma.",
+                    "Please close Asheron's Call before installing the native-hook test.",
                     AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -49,16 +49,12 @@ internal static class Installer
 
             ExtractResource("ACWorldGamma.dll",
                 System.IO.Path.Combine(InstallDir, "ACWorldGamma.dll"));
-            ExtractResource("RenderHook.dll",
-                System.IO.Path.Combine(InstallDir, "RenderHook.dll"));
-            ExtractResource("Interop.RenderHookLib.dll",
-                System.IO.Path.Combine(InstallDir, "Interop.RenderHookLib.dll"));
             ExtractResource("uninstall.exe",
                 System.IO.Path.Combine(InstallDir, "uninstall.exe"));
             ExtractResource("README.txt",
                 System.IO.Path.Combine(InstallDir, "README.txt"));
-            ExtractResource("THIRD_PARTY_NOTES.txt",
-                System.IO.Path.Combine(InstallDir, "THIRD_PARTY_NOTES.txt"));
+            ExtractResource("NATIVE_HOOK_NOTES.md",
+                System.IO.Path.Combine(InstallDir, "NATIVE_HOOK_NOTES.md"));
 
             using (RegistryKey plugin = Registry.LocalMachine.CreateSubKey(
                 @"Software\Decal\Plugins\" + PluginGuid))
@@ -92,10 +88,10 @@ internal static class Installer
             }
 
             MessageBox.Show(
-                "AC World Gamma " + Version + " is installed.\n\n" +
-                "Start Asheron's Call normally, then type:\n\n" +
-                "/acgamma status\n\n" +
-                "Use /acgamma help for the full command list.",
+                "AC World Gamma native-hook test " + Version + " is installed.\n\n" +
+                "This experimental build replaces the Decal registration for the stable plugin, " +
+                "but installs into a separate folder and does not overwrite the stable files.\n\n" +
+                "Start Asheron's Call normally, then type:\n\n/acgamma status",
                 AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
