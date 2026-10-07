@@ -27,6 +27,42 @@ namespace ACWorldGamma
         private volatile int _level;
         private bool _installed;
 
+        // When Decal does not expose its live device, we create and keep a tiny
+        // private D3D9 device alive. D3D9 device objects from the system runtime
+        // use the runtime's shared method table; patching SetLight there lets us
+        // intercept AC's SetLight calls without needing AC's device pointer.
+        private IntPtr _ownedD3D9 = IntPtr.Zero;
+        private IntPtr _ownedDevice = IntPtr.Zero;
+        private IntPtr _dummyWindow = IntPtr.Zero;
+
+        private const uint D3DSdkVersion = 32;
+        private const uint D3DAdapterDefault = 0;
+        private const int D3DDevTypeHal = 1;
+        private const uint D3DCreateSoftwareVertexProcessing = 0x20;
+        private const int D3DSwapEffectDiscard = 1;
+        private const uint WsPopup = 0x80000000;
+
+        [DllImport("d3d9.dll", CallingConvention = CallingConvention.StdCall)]
+        private static extern IntPtr Direct3DCreate9(uint sdkVersion);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr CreateWindowEx(
+            uint exStyle,
+            string className,
+            string windowName,
+            uint style,
+            int x,
+            int y,
+            int width,
+            int height,
+            IntPtr parent,
+            IntPtr menu,
+            IntPtr instance,
+            IntPtr param);
+
+        [DllImport("user32.dll")]
+        private static extern bool DestroyWindow(IntPtr hwnd);
+
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool VirtualProtect(
             IntPtr lpAddress,
@@ -35,10 +71,42 @@ namespace ACWorldGamma
             out uint lpflOldProtect);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int CreateDeviceDelegate(
+            IntPtr direct3D9,
+            uint adapter,
+            int deviceType,
+            IntPtr focusWindow,
+            uint behaviorFlags,
+            ref D3DPresentParameters presentationParameters,
+            out IntPtr returnedDevice);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate uint ReleaseDelegate(IntPtr unknown);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int SetLightDelegate(
             IntPtr device,
             uint index,
             ref D3DLight9 light);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct D3DPresentParameters
+        {
+            public uint BackBufferWidth;
+            public uint BackBufferHeight;
+            public int BackBufferFormat;
+            public uint BackBufferCount;
+            public int MultiSampleType;
+            public uint MultiSampleQuality;
+            public int SwapEffect;
+            public IntPtr DeviceWindow;
+            public int Windowed;
+            public int EnableAutoDepthStencil;
+            public int AutoDepthStencilFormat;
+            public uint Flags;
+            public uint FullScreenRefreshRateInHz;
+            public uint PresentationInterval;
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         private struct D3DColorValue
@@ -95,29 +163,7 @@ namespace ACWorldGamma
                 if (unknown == IntPtr.Zero)
                     throw new InvalidOperationException("Could not obtain the Direct3D device IUnknown pointer.");
 
-                IntPtr vtable = Marshal.ReadIntPtr(unknown);
-                if (vtable == IntPtr.Zero)
-                    throw new InvalidOperationException("Direct3D device vtable pointer is null.");
-
-                _vtableEntry = IntPtr.Add(
-                    vtable,
-                    SetLightVtableIndex * IntPtr.Size);
-
-                _originalFunction = Marshal.ReadIntPtr(_vtableEntry);
-                if (_originalFunction == IntPtr.Zero)
-                    throw new InvalidOperationException("IDirect3DDevice9::SetLight pointer is null.");
-
-                _originalSetLight =
-                    (SetLightDelegate)Marshal.GetDelegateForFunctionPointer(
-                        _originalFunction,
-                        typeof(SetLightDelegate));
-
-                _replacementSetLight = new SetLightDelegate(HookedSetLight);
-                _replacementFunction =
-                    Marshal.GetFunctionPointerForDelegate(_replacementSetLight);
-
-                WriteFunctionPointer(_vtableEntry, _replacementFunction);
-                _installed = true;
+                InstallFromDevicePointer(unknown);
             }
             finally
             {
@@ -126,6 +172,106 @@ namespace ACWorldGamma
                     try { Marshal.Release(unknown); } catch { }
                 }
             }
+        }
+
+        public void InstallUsingPrivateDevice()
+        {
+            Uninstall();
+
+            try
+            {
+                _dummyWindow = CreateWindowEx(
+                    0,
+                    "STATIC",
+                    "ACWorldGammaD3DProbe",
+                    WsPopup,
+                    0, 0, 1, 1,
+                    IntPtr.Zero,
+                    IntPtr.Zero,
+                    IntPtr.Zero,
+                    IntPtr.Zero);
+
+                if (_dummyWindow == IntPtr.Zero)
+                    throw new System.ComponentModel.Win32Exception(
+                        Marshal.GetLastWin32Error(),
+                        "Could not create the private Direct3D probe window.");
+
+                _ownedD3D9 = Direct3DCreate9(D3DSdkVersion);
+                if (_ownedD3D9 == IntPtr.Zero)
+                    throw new InvalidOperationException("Direct3DCreate9 returned null.");
+
+                IntPtr d3dVtable = Marshal.ReadIntPtr(_ownedD3D9);
+                IntPtr createDevicePointer = Marshal.ReadIntPtr(
+                    d3dVtable,
+                    16 * IntPtr.Size);
+
+                CreateDeviceDelegate createDevice =
+                    (CreateDeviceDelegate)Marshal.GetDelegateForFunctionPointer(
+                        createDevicePointer,
+                        typeof(CreateDeviceDelegate));
+
+                D3DPresentParameters pp = new D3DPresentParameters();
+                pp.BackBufferWidth = 1;
+                pp.BackBufferHeight = 1;
+                pp.BackBufferFormat = 0; // D3DFMT_UNKNOWN for windowed mode
+                pp.BackBufferCount = 1;
+                pp.MultiSampleType = 0;
+                pp.MultiSampleQuality = 0;
+                pp.SwapEffect = D3DSwapEffectDiscard;
+                pp.DeviceWindow = _dummyWindow;
+                pp.Windowed = 1;
+                pp.EnableAutoDepthStencil = 0;
+                pp.AutoDepthStencilFormat = 0;
+                pp.Flags = 0;
+                pp.FullScreenRefreshRateInHz = 0;
+                pp.PresentationInterval = 0;
+
+                int hr = createDevice(
+                    _ownedD3D9,
+                    D3DAdapterDefault,
+                    D3DDevTypeHal,
+                    _dummyWindow,
+                    D3DCreateSoftwareVertexProcessing,
+                    ref pp,
+                    out _ownedDevice);
+
+                if (hr < 0 || _ownedDevice == IntPtr.Zero)
+                    Marshal.ThrowExceptionForHR(hr);
+
+                InstallFromDevicePointer(_ownedDevice);
+            }
+            catch
+            {
+                CleanupOwnedDevice();
+                throw;
+            }
+        }
+
+        private void InstallFromDevicePointer(IntPtr device)
+        {
+            IntPtr vtable = Marshal.ReadIntPtr(device);
+            if (vtable == IntPtr.Zero)
+                throw new InvalidOperationException("Direct3D device vtable pointer is null.");
+
+            _vtableEntry = IntPtr.Add(
+                vtable,
+                SetLightVtableIndex * IntPtr.Size);
+
+            _originalFunction = Marshal.ReadIntPtr(_vtableEntry);
+            if (_originalFunction == IntPtr.Zero)
+                throw new InvalidOperationException("IDirect3DDevice9::SetLight pointer is null.");
+
+            _originalSetLight =
+                (SetLightDelegate)Marshal.GetDelegateForFunctionPointer(
+                    _originalFunction,
+                    typeof(SetLightDelegate));
+
+            _replacementSetLight = new SetLightDelegate(HookedSetLight);
+            _replacementFunction =
+                Marshal.GetFunctionPointerForDelegate(_replacementSetLight);
+
+            WriteFunctionPointer(_vtableEntry, _replacementFunction);
+            _installed = true;
         }
 
         public void SetLevel(bool enabled, int level)
@@ -141,12 +287,10 @@ namespace ACWorldGamma
 
         public void Uninstall()
         {
-            if (!_installed)
-                return;
-
             try
             {
-                if (_vtableEntry != IntPtr.Zero &&
+                if (_installed &&
+                    _vtableEntry != IntPtr.Zero &&
                     _originalFunction != IntPtr.Zero)
                 {
                     // Restore only if our function is still installed. If another
@@ -164,7 +308,45 @@ namespace ACWorldGamma
                 _replacementFunction = IntPtr.Zero;
                 _originalSetLight = null;
                 _replacementSetLight = null;
+
+                CleanupOwnedDevice();
             }
+        }
+
+        private void CleanupOwnedDevice()
+        {
+            if (_ownedDevice != IntPtr.Zero)
+            {
+                try { ReleaseComPointer(_ownedDevice); } catch { }
+                _ownedDevice = IntPtr.Zero;
+            }
+
+            if (_ownedD3D9 != IntPtr.Zero)
+            {
+                try { ReleaseComPointer(_ownedD3D9); } catch { }
+                _ownedD3D9 = IntPtr.Zero;
+            }
+
+            if (_dummyWindow != IntPtr.Zero)
+            {
+                try { DestroyWindow(_dummyWindow); } catch { }
+                _dummyWindow = IntPtr.Zero;
+            }
+        }
+
+        private static void ReleaseComPointer(IntPtr unknown)
+        {
+            IntPtr vtable = Marshal.ReadIntPtr(unknown);
+            IntPtr releasePointer = Marshal.ReadIntPtr(
+                vtable,
+                2 * IntPtr.Size);
+
+            ReleaseDelegate release =
+                (ReleaseDelegate)Marshal.GetDelegateForFunctionPointer(
+                    releasePointer,
+                    typeof(ReleaseDelegate));
+
+            release(unknown);
         }
 
         private int HookedSetLight(
