@@ -14,6 +14,7 @@ namespace ACWorldGamma
 
         private Direct3DLightHook _hook;
         private bool _hookReady = false;
+        private string _lastHookError = "";
         private bool _enabled = false;
         private int _level = 1;
 
@@ -69,21 +70,27 @@ namespace ACWorldGamma
         {
             try
             {
+                _lastHookError = "";
+
                 object device = Host.Render.UnsafeDevice;
                 if (device == null)
                 {
-                    Chat("Decal did not expose a Direct3D device.");
+                    _hookReady = false;
+                    _lastHookError = "Decal returned no Direct3D device.";
                     return;
                 }
 
                 _hook = new Direct3DLightHook();
                 _hook.Install(device);
                 _hookReady = _hook.Installed;
+
+                if (!_hookReady)
+                    _lastHookError = "Hook installation completed but did not report ready.";
             }
             catch (Exception ex)
             {
                 _hookReady = false;
-                Fail("Native light hook", ex);
+                _lastHookError = ex.GetType().Name + ": " + ex.Message;
                 ReleaseNativeLightHook();
             }
         }
@@ -129,6 +136,9 @@ namespace ACWorldGamma
 
                 if (String.Equals(rest, "status", StringComparison.OrdinalIgnoreCase))
                 {
+                    if (!_hookReady)
+                        InitializeNativeLightHook();
+
                     Chat(StatusText());
                     return;
                 }
@@ -246,7 +256,12 @@ namespace ACWorldGamma
         private string StatusText()
         {
             if (!_hookReady)
+            {
+                if (!String.IsNullOrEmpty(_lastHookError))
+                    return "Native light hook unavailable: " + _lastHookError;
+
                 return "Native light hook unavailable.";
+            }
 
             if (!_enabled || _level <= 0)
                 return "OFF (normal AC world lighting).";
