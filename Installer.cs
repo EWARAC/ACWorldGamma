@@ -84,7 +84,7 @@ internal static class Installer
                 un.SetValue("DisplayVersion", Version, RegistryValueKind.String);
                 un.SetValue("Publisher", "EWARAC", RegistryValueKind.String);
                 un.SetValue("InstallLocation", InstallDir, RegistryValueKind.String);
-                un.SetValue("UninstallString", """ + uninstallPath + """, RegistryValueKind.String);
+                un.SetValue("UninstallString", "\"" + uninstallPath + "\"", RegistryValueKind.String);
                 un.SetValue("DisplayIcon", uninstallPath, RegistryValueKind.String);
                 un.SetValue("NoModify", 1, RegistryValueKind.DWord);
                 un.SetValue("NoRepair", 1, RegistryValueKind.DWord);
