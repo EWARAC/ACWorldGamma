@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Runtime.InteropServices;
 using Decal.Adapter;
 
 namespace ACWorldGamma
