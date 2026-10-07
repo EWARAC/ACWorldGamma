@@ -13,9 +13,5 @@
       <HintPath>C:\Program Files (x86)\Decal 3.0\Decal.Adapter.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="Interop.RenderHookLib">
-      <HintPath>ThirdParty\Interop.RenderHookLib.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
   </ItemGroup>
 </Project>
