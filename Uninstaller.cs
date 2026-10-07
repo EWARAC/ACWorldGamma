@@ -25,7 +25,7 @@ internal static class Uninstaller
             if (Process.GetProcessesByName("acclient").Length > 0)
             {
                 MessageBox.Show(
-                    "Please close Asheron's Call before removing AC World Gamma.",
+                    "Please close all Asheron's Call clients before removing AC World Gamma.",
                     AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -46,15 +46,15 @@ internal static class Uninstaller
             catch { }
 
             string dir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd(
-                System.IO.Path.DirectorySeparatorChar,
-                System.IO.Path.AltDirectorySeparatorChar);
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
 
-            string[] files = new string[]
+            string[] files =
             {
                 "ACWorldGamma.dll",
+                "README.txt",
                 "RenderHook.dll",
                 "Interop.RenderHookLib.dll",
-                "README.txt",
                 "THIRD_PARTY_NOTES.txt"
             };
 
@@ -62,7 +62,7 @@ internal static class Uninstaller
             {
                 try
                 {
-                    string full = System.IO.Path.Combine(dir, file);
+                    string full = Path.Combine(dir, file);
                     if (File.Exists(full))
                         File.Delete(full);
                 }
@@ -70,7 +70,7 @@ internal static class Uninstaller
             }
 
             string cmd =
-                "/c ping 127.0.0.1 -n 2 > nul & rmdir /s /q \"" + dir + "\"";
+                "/c ping 127.0.0.1 -n 3 > nul & rmdir /s /q \"" + dir + "\"";
 
             Process.Start(new ProcessStartInfo
             {
