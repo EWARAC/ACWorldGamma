@@ -1,0 +1,36 @@
+THIRD-PARTY NOTICE
+
+AC World Gamma includes the SkunkVision RenderHook component and its generated
+managed COM interop assembly.
+
+Original SkunkVision was written by Gregory Kusnick / SkunkWorks.
+The public source states that SkunkVision was released under the MIT License.
+
+The VirindiViews port contains C# frontend work by Virindi and retains the
+original MIT permission notice.
+
+The relevant public source identifies:
+  RenderHook.SVRenderHook
+  CLSID {084DB7D3-FCA8-4C37-8748-18232FE9CF9A}
+  ISVRenderHook IID {F5E367AA-6FC9-473B-8BC8-9060C25EFA39}
+  Direct3D9 SetLight interception used for world lighting
+
+MIT License permission notice:
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
