@@ -15,7 +15,7 @@ namespace ACWorldGamma
     [ComDefaultInterface(typeof(IRender3DSink))]
     public sealed class PluginCore : PluginBase, IRender3DSink
     {
-        private const string Version = "0.4.0-rc1a";
+        private const string Version = "0.4.0";
         private static readonly Guid IidInjectService =
             new Guid("47761792-2520-4802-8548-5CA580697614");
         private static readonly Guid IidDirect3DDevice9 =
